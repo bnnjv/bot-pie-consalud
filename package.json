@@ -1,0 +1,13 @@
+{
+  "name": "pie-consalud-bot",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node src/test-baileys.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "pino": "^8.0.0"
+  }
+}
+
