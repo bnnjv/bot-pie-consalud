@@ -215,8 +215,9 @@ El abono de $10.000 se realiza vía transferencia al momento de agendar.`
             respuesta =
 `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣
 
-Responde con el número de la opción que necesites:
+Muchas racias por escribirnos 😊, será un gusto ayudarte.
 
+Por favor indícanos el número de la opción que necesitas:
 1️⃣ Reservar una hora  
 2️⃣ Ver precios y servicios  
 3️⃣ Ubicación de nuestras sucursales  
