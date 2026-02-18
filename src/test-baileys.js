@@ -99,7 +99,7 @@ Escribe:
 
 Banco Estado  
 Cuenta Corriente  
-N° 291001190100  
+N° 29100119011  
 Rut: 77.478.206-0  
 Correo: Piesalud.21@gmail.com  
 
