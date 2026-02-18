@@ -4,7 +4,6 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys'
 import Pino from 'pino'
 
-// 🔹 Memoria simple de usuarios
 const sesiones = {}
 
 async function iniciarBaileys() {
@@ -18,7 +17,7 @@ async function iniciarBaileys() {
         browser: ['Pie Consalud Bot', 'Chrome', '1.0']
     })
 
-    // 🔹 CONEXIÓN (NO SE TOCA EL QR)
+    // 🔹 CONEXIÓN
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update
 
@@ -51,14 +50,170 @@ async function iniciarBaileys() {
             msg.message.extendedTextMessage?.text ||
             ''
 
-        const mensaje = text.toLowerCase()
+        const mensaje = text.toLowerCase().trim()
 
-        // 🌱 MENSAJE INICIAL
-        let respuesta =
+        let respuesta = ''
+
+        // ==============================
+        // 1️⃣ SELECCIÓN DE SUCURSAL (solo cuando se pide)
+        // ==============================
+
+        if (mensaje === 'ahumada') {
+            sesiones[from] = { sucursal: 'ahumada' }
+            respuesta =
+`✅ Has seleccionado la sucursal *Ahumada*.
+
+Ahora puedes escribir:
+4️⃣ Para recibir los datos de abono
+1️⃣ Para reservar tu hora`
+        }
+
+        else if (mensaje === 'providencia') {
+            sesiones[from] = { sucursal: 'providencia' }
+            respuesta =
+`✅ Has seleccionado la sucursal *Providencia*.
+
+Ahora puedes escribir:
+4️⃣ Para recibir los datos de abono
+1️⃣ Para reservar tu hora`
+        }
+
+        // ==============================
+        // 4️⃣ ABONO (requiere sucursal)
+        // ==============================
+
+        else if (mensaje === '4' || mensaje.includes('abono')) {
+
+            if (!sesiones[from]?.sucursal) {
+                respuesta =
+`Para enviarte los datos de abono, primero indícanos la sucursal:
+
+Escribe:
+• Ahumada
+• Providencia`
+            }
+
+            else if (sesiones[from].sucursal === 'ahumada') {
+                respuesta =
+`💳 *Datos de Abono – Sucursal Ahumada*
+
+Banco Estado  
+Cuenta Corriente  
+N° 291001190100  
+Rut: 77.478.206-0  
+Correo: Piesalud.21@gmail.com  
+
+Abono: *$10.000*  
+Se descuenta del total de la atención.
+
+⚠️ Sin aviso previo, el abono no es reembolsable.`
+            }
+
+            else {
+                respuesta =
+`💳 *Datos de Abono – Sucursal Providencia*
+
+Banco Chile  
+Cuenta Vista  
+N° 000083725182  
+Rut: 77.478.206-0  
+Correo: Pieconsalud@gmail.com  
+
+Abono: *$10.000*  
+Se descuenta del total de la atención.
+
+⚠️ Sin aviso previo, el abono no es reembolsable.`
+            }
+        }
+
+        // ==============================
+        // 1️⃣ RESERVA
+        // ==============================
+
+        else if (mensaje === '1' || mensaje.includes('hora') || mensaje.includes('reservar')) {
+            respuesta =
+`📅 *Reserva de Hora*
+
+Selecciona tu sucursal y revisa disponibilidad en línea:
+
+🏙️ Ahumada  
+https://calendly.com/pieconsalud-santiagocentro/reserva-tu-hora
+
+🏙️ Providencia  
+https://calendly.com/pieconsalud-providencia/reserva-tu-hora
+
+⚠️ Importante: asistir sin esmalte.
+De lo contrario se aplicará un cobro adicional.`
+        }
+
+        // ==============================
+        // 2️⃣ PRECIOS
+        // ==============================
+
+        else if (mensaje === '2' || mensaje.includes('precio')) {
+            respuesta =
+`🏷️ *Valores de Atención – Pie Consalud*
+
+Atención Podológica: *$20.000*
+
+Tratamientos como:
+• Uña encarnada  
+• Onicomicosis  
+• Pie diabético  
+
+El valor puede variar según evaluación profesional.`
+        }
+
+        // ==============================
+        // 3️⃣ UBICACIÓN
+        // ==============================
+
+        else if (mensaje === '3' || mensaje.includes('direccion') || mensaje.includes('ubicacion')) {
+            respuesta =
+`📍 *Nuestras Sucursales*
+
+🏙️ Ahumada  
+Cerca de Metro U. de Chile / Plaza de Armas
+
+🏙️ Providencia  
+Cerca de Metro Tobalaba
+
+Escribe el nombre de la sucursal para continuar.`
+        }
+
+        // ==============================
+        // 5️⃣ HORARIOS
+        // ==============================
+
+        else if (mensaje === '5' || mensaje.includes('horario')) {
+            respuesta =
+`🕒 *Horario de Atención*
+
+Lunes a viernes  
+10:00 a 17:00 hrs`
+        }
+
+        // ==============================
+        // 6️⃣ MEDIOS DE PAGO
+        // ==============================
+
+        else if (mensaje === '6' || mensaje.includes('pago')) {
+            respuesta =
+`💰 *Medios de Pago*
+
+✔️ Transferencia electrónica  
+✔️ Efectivo  
+
+El abono de $10.000 se realiza vía transferencia al momento de agendar.`
+        }
+
+        // ==============================
+        // MENÚ PRINCIPAL (solo si no coincide nada)
+        // ==============================
+
+        else {
+            respuesta =
 `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣
-
-Muchas gracias por escribirnos 😊  
-¿En qué podemos ayudarte hoy?
 
 Responde con el número de la opción que necesites:
 
@@ -68,112 +223,6 @@ Responde con el número de la opción que necesites:
 4️⃣ Datos para realizar el abono  
 5️⃣ Horarios de atención  
 6️⃣ Medios de pago aceptados`
-
-        // 2️⃣ PRECIOS
-        if (mensaje.includes('precio') || mensaje === '2') {
-            respuesta =
-`🏷️ *Valores de Atención – Pie Consalud*
-
-La atención de Podología tiene un valor de *$20.000*.
-
-Tratamientos específicos pueden variar según evaluación profesional.
-
-¿Te gustaría agendar una hora?`
-        }
-
-        // 3️⃣ UBICACIÓN
-        else if (mensaje.includes('direccion') || mensaje.includes('ubicacion') || mensaje === '3') {
-            respuesta =
-`📍 *Nuestras Sucursales*
-
-🏙️ *Ahumada*  
-Cerca de Metro U. de Chile / Plaza de Armas  
-
-🏙️ *Providencia*  
-Cerca de Metro Tobalaba  
-
-¿En cuál sucursal deseas atenderte?`
-        }
-
-        // 🔹 GUARDAR SUCURSAL
-        else if (mensaje === 'ahumada' || mensaje === '1 ahumada') {
-            sesiones[from] = { sucursal: 'ahumada' }
-            respuesta = '✅ Sucursal Ahumada seleccionada.'
-        }
-
-        else if (mensaje === 'providencia' || mensaje === '2 providencia') {
-            sesiones[from] = { sucursal: 'providencia' }
-            respuesta = '✅ Sucursal Providencia seleccionada.'
-        }
-
-        // 1️⃣ RESERVA
-        else if (mensaje.includes('hora') || mensaje.includes('reservar') || mensaje === '1') {
-            respuesta =
-`📅 *Reserva de Hora*
-
-🏙️ Ahumada  
-https://calendly.com/pieconsalud-santiagocentro/reserva-tu-hora
-
-🏙️ Providencia  
-https://calendly.com/pieconsalud-providencia/reserva-tu-hora
-
-⚠️ Asistir sin esmalte.`
-        }
-
-        // 4️⃣ ABONO (MEJORADO)
-        else if (mensaje.includes('abono') || mensaje.includes('transferencia') || mensaje === '4') {
-
-            if (!sesiones[from]?.sucursal) {
-                respuesta =
-`Para enviarte los datos de abono, indícanos la sucursal:
-
-1️⃣ Ahumada  
-2️⃣ Providencia`
-            }
-
-            else if (sesiones[from].sucursal === 'ahumada') {
-                respuesta =
-`💳 *Datos de Abono – Sucursal Ahumada*
-
-Banco Estado  
-Cuenta Corriente  
-N° 29100119011  
-Rut: 77.478.206-0  
-Correo: Piesalud.21@gmail.com
-
-Abono: $10.000`
-            }
-
-            else if (sesiones[from].sucursal === 'providencia') {
-                respuesta =
-`💳 *Datos de Abono – Sucursal Providencia*
-
-Banco Chile  
-Cuenta Vista  
-N° 000083725182  
-Rut: 77.478.206-0  
-Correo: Pieconsalud@gmail.com
-
-Abono: $10.000`
-            }
-        }
-
-        // 5️⃣ HORARIO
-        else if (mensaje.includes('horario') || mensaje === '5') {
-            respuesta =
-`🕒 *Horario de Atención*
-
-Lunes a Viernes  
-10:00 a 17:00 hrs`
-        }
-
-        // 6️⃣ MEDIOS DE PAGO
-        else if (mensaje.includes('pago') || mensaje === '6') {
-            respuesta =
-`💰 *Medios de Pago*
-
-✔️ Transferencia  
-✔️ Efectivo`
         }
 
         await sock.sendMessage(from, { text: respuesta })
