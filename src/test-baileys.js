@@ -4,6 +4,9 @@ import makeWASocket, {
 } from '@whiskeysockets/baileys'
 import Pino from 'pino'
 
+// 🔹 Memoria simple de usuarios
+const sesiones = {}
+
 async function iniciarBaileys() {
     console.log('🚀 Bot de Pie Consalud iniciado...\n')
 
@@ -50,11 +53,11 @@ async function iniciarBaileys() {
 
         const mensaje = text.toLowerCase()
 
-        // 🌱 MENSAJE INICIAL AMABLE
+        // 🌱 MENSAJE INICIAL
         let respuesta =
 `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣
 
-Muchas gracias por escribirnos, es un gusto atenderte 😊  
+Muchas gracias por escribirnos 😊  
 ¿En qué podemos ayudarte hoy?
 
 Responde con el número de la opción que necesites:
@@ -73,84 +76,86 @@ Responde con el número de la opción que necesites:
 
 La atención de Podología tiene un valor de *$20.000*.
 
-Para tratamientos específicos como:
-• Uña encarnada  
-• Onicomicosis (hongos)  
-• Pie diabético  
-
-El valor puede variar según la evaluación del profesional.
+Tratamientos específicos pueden variar según evaluación profesional.
 
 ¿Te gustaría agendar una hora?`
         }
 
         // 3️⃣ UBICACIÓN
-        else if (
-            mensaje.includes('direccion') ||
-            mensaje.includes('ubicacion') ||
-            mensaje === '3'
-        ) {
+        else if (mensaje.includes('direccion') || mensaje.includes('ubicacion') || mensaje === '3') {
             respuesta =
 `📍 *Nuestras Sucursales*
 
 🏙️ *Ahumada*  
 Cerca de Metro U. de Chile / Plaza de Armas  
-https://www.google.com/maps/place/Pie+Consalud%2FPodolog%C3%ADa+en+Santiago+Centro
 
 🏙️ *Providencia*  
 Cerca de Metro Tobalaba  
-https://www.google.com/maps/place/Pie+Consalud%2FPodolog%C3%ADa+en+Providencia
 
-¿En cuál sucursal te gustaría atenderte?`
+¿En cuál sucursal deseas atenderte?`
+        }
+
+        // 🔹 GUARDAR SUCURSAL
+        else if (mensaje === 'ahumada' || mensaje === '1 ahumada') {
+            sesiones[from] = { sucursal: 'ahumada' }
+            respuesta = '✅ Sucursal Ahumada seleccionada.'
+        }
+
+        else if (mensaje === 'providencia' || mensaje === '2 providencia') {
+            sesiones[from] = { sucursal: 'providencia' }
+            respuesta = '✅ Sucursal Providencia seleccionada.'
         }
 
         // 1️⃣ RESERVA
-        else if (
-            mensaje.includes('hora') ||
-            mensaje.includes('reservar') ||
-            mensaje === '1'
-        ) {
+        else if (mensaje.includes('hora') || mensaje.includes('reservar') || mensaje === '1') {
             respuesta =
 `📅 *Reserva de Hora*
 
-Selecciona tu sucursal y revisa disponibilidad en línea:
-
-🏙️ *Ahumada*  
+🏙️ Ahumada  
 https://calendly.com/pieconsalud-santiagocentro/reserva-tu-hora
 
-🏙️ *Providencia*  
+🏙️ Providencia  
 https://calendly.com/pieconsalud-providencia/reserva-tu-hora
 
-⚠️ Importante: asistir *sin esmalte*.  
-De lo contrario se aplicará un cobro adicional.`
+⚠️ Asistir sin esmalte.`
         }
 
-        // 4️⃣ ABONO
-        else if (
-            mensaje.includes('abono') ||
-            mensaje.includes('transferencia') ||
-            mensaje === '4'
-        ) {
-            respuesta =
-`💳 *Abono para Confirmar Reserva*
+        // 4️⃣ ABONO (MEJORADO)
+        else if (mensaje.includes('abono') || mensaje.includes('transferencia') || mensaje === '4') {
 
-El abono es de *$10.000* y se descuenta del total de la atención.  
-Debe realizarse inmediatamente después de agendar.
+            if (!sesiones[from]?.sucursal) {
+                respuesta =
+`Para enviarte los datos de abono, indícanos la sucursal:
 
-📍 *Sucursal Ahumada*  
+1️⃣ Ahumada  
+2️⃣ Providencia`
+            }
+
+            else if (sesiones[from].sucursal === 'ahumada') {
+                respuesta =
+`💳 *Datos de Abono – Sucursal Ahumada*
+
 Banco Estado  
 Cuenta Corriente  
-N° 291001190100  
+N° 29100119011  
 Rut: 77.478.206-0  
-Correo: Piesalud.21@gmail.com  
+Correo: Piesalud.21@gmail.com
 
-📍 *Sucursal Providencia*  
+Abono: $10.000`
+            }
+
+            else if (sesiones[from].sucursal === 'providencia') {
+                respuesta =
+`💳 *Datos de Abono – Sucursal Providencia*
+
 Banco Chile  
 Cuenta Vista  
 N° 000083725182  
 Rut: 77.478.206-0  
-Correo: Pieconsalud@gmail.com  
+Correo: Pieconsalud@gmail.com
 
-⚠️ Sin aviso previo, el abono no es reembolsable.`
+Abono: $10.000`
+            }
         }
 
         // 5️⃣ HORARIO
@@ -158,21 +163,17 @@ Correo: Pieconsalud@gmail.com
             respuesta =
 `🕒 *Horario de Atención*
 
-Atendemos de *lunes a viernes*  
-⏰ *10:00 a 17:00 hrs*
-
-¿Puedo ayudarte con algo más?`
+Lunes a Viernes  
+10:00 a 17:00 hrs`
         }
 
         // 6️⃣ MEDIOS DE PAGO
         else if (mensaje.includes('pago') || mensaje === '6') {
             respuesta =
-`💰 *Medios de Pago Aceptados*
+`💰 *Medios de Pago*
 
-✔️ Transferencia electrónica  
-✔️ Efectivo  
-
-📌 El abono de $10.000 se realiza vía transferencia al momento de agendar para asegurar tu hora.`
+✔️ Transferencia  
+✔️ Efectivo`
         }
 
         await sock.sendMessage(from, { text: respuesta })
