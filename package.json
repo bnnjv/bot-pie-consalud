@@ -6,7 +6,6 @@
   },
   "description": "...",
   "main": "src/test-baileys.js",
-  },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
     "express": "^5.2.1",
