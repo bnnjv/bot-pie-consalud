@@ -10,7 +10,7 @@ const sesiones = {}
 async function iniciarBaileys() {
     console.log('🚀 Bot de Pie Consalud iniciado...\n')
 
-    const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
+    const { state, saveCreds } = await useMultiFileAuthState('./auth_info_2')
 
     const sock = makeWASocket({
         auth: state,
