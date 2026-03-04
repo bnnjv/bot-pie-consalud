@@ -190,7 +190,8 @@ Escribe el nombre de la sucursal para continuar.`
 `🕒 *Horario de Atención*
 
 Lunes a viernes  
-10:00 a 17:00 hrs`
+10:00 a 17:00 hrs 
+Y sabados de 10:00 a 12:00`
         }
 
         // ==============================
