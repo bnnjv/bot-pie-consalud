@@ -186,6 +186,7 @@ app.get('/', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log('🌐 Servidor web activo en puerto', PORT)
-    iniciarBaileys()
 })
+
+iniciarBaileys() // <-- Fuera de las llaves para que corran en paralelo
 
