@@ -1,6 +1,5 @@
 import makeWASocket, {
-    useMultiFileAuthState,
-    DisconnectReason
+    useMultiFileAuthState
 } from '@whiskeysockets/baileys'
 import Pino from 'pino'
 import express from 'express'
@@ -19,11 +18,11 @@ async function iniciarBaileys() {
     })
 
     // ==============================
-    // CONEXIÓN
+    // CONEXIÓN (SIN LOOP INFINITO)
     // ==============================
 
     sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update
+        const { connection, qr } = update
 
         if (qr) {
             const link = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
@@ -36,11 +35,7 @@ async function iniciarBaileys() {
         }
 
         if (connection === 'close') {
-            const reason = lastDisconnect?.error?.output?.statusCode
-            if (reason !== DisconnectReason.loggedOut) {
-                console.log('🔄 Reintentando conexión...')
-                iniciarBaileys()
-            }
+            console.log('❌ Conexión cerrada')
         }
     })
 
@@ -88,8 +83,6 @@ Ahora puedes escribir:
         else if (mensaje === '1' || mensaje.includes('hora') || mensaje.includes('reservar')) {
             respuesta =
 `📅 *Reserva de Hora*
-
-Selecciona tu sucursal y revisa disponibilidad:
 
 🏙️ Ahumada  
 https://calendly.com/pieconsalud-santiagocentro/reserva-tu-hora
@@ -154,7 +147,7 @@ Rut: 77.478.206-0
 Correo: Piesalud.21@gmail.com
 
 Abono: *$10.000*
-Se descuenta del total de la atención.`
+Se descuenta del total.`
             }
 
             else {
@@ -168,7 +161,7 @@ Rut: 77.478.206-0
 Correo: Pieconsalud@gmail.com
 
 Abono: *$10.000*
-Se descuenta del total de la atención.`
+Se descuenta del total.`
             }
         }
 
@@ -194,7 +187,7 @@ Sábados
 ✔️ Transferencia electrónica
 ✔️ Efectivo
 
-El abono de $10.000 se realiza vía transferencia al momento de agendar.`
+El abono se realiza vía transferencia al agendar.`
         }
 
         // ===== MENÚ PRINCIPAL =====
@@ -203,12 +196,12 @@ El abono de $10.000 se realiza vía transferencia al momento de agendar.`
             respuesta =
 `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣
 
-Por favor selecciona una opción:
+Selecciona una opción:
 
-1️⃣ Reservar una hora
+1️⃣ Reservar hora
 2️⃣ Ver precios
 3️⃣ Ubicación
-4️⃣ Datos para abono
+4️⃣ Datos de abono
 5️⃣ Horarios
 6️⃣ Medios de pago`
         }
@@ -227,7 +220,7 @@ const app = express()
 const PORT = process.env.PORT || 3000
 
 app.get('/', (req, res) => {
-    res.send('Bot Pie Consalud está Online ✅')
+    res.send('Bot Pie Consalud Online ✅')
 })
 
 app.listen(PORT, '0.0.0.0', () => {
