@@ -11,6 +11,7 @@ async function iniciarBaileys() {
 
     const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
 
+    // ✅ CORREGIDO (sin espacio raro)
     const sock = makeWASocket({
         auth: state,
         logger: Pino({ level: 'silent' }),
@@ -51,11 +52,10 @@ async function iniciarBaileys() {
             ''
 
         const mensaje = text.toLowerCase().trim()
-
         let respuesta = ''
 
         // ==============================
-        // 1️⃣ SELECCIÓN DE SUCURSAL (solo cuando se pide)
+        // SELECCIÓN DE SUCURSAL
         // ==============================
 
         if (mensaje === 'ahumada') {
@@ -79,7 +79,7 @@ Ahora puedes escribir:
         }
 
         // ==============================
-        // 4️⃣ ABONO (requiere sucursal)
+        // ABONO
         // ==============================
 
         else if (mensaje === '4' || mensaje.includes('abono')) {
@@ -127,7 +127,7 @@ Se descuenta del total de la atención.
         }
 
         // ==============================
-        // 1️⃣ RESERVA
+        // RESERVA
         // ==============================
 
         else if (mensaje === '1' || mensaje.includes('hora') || mensaje.includes('reservar')) {
@@ -147,7 +147,7 @@ De lo contrario se aplicará un cobro adicional.`
         }
 
         // ==============================
-        // 2️⃣ PRECIOS
+        // PRECIOS
         // ==============================
 
         else if (mensaje === '2' || mensaje.includes('precio')) {
@@ -165,7 +165,7 @@ El valor puede variar según evaluación profesional.`
         }
 
         // ==============================
-        // 3️⃣ UBICACIÓN
+        // UBICACIÓN
         // ==============================
 
         else if (mensaje === '3' || mensaje.includes('direccion') || mensaje.includes('ubicacion')) {
@@ -182,7 +182,7 @@ Escribe el nombre de la sucursal para continuar.`
         }
 
         // ==============================
-        // 5️⃣ HORARIOS
+        // HORARIOS
         // ==============================
 
         else if (mensaje === '5' || mensaje.includes('horario')) {
@@ -190,12 +190,12 @@ Escribe el nombre de la sucursal para continuar.`
 `🕒 *Horario de Atención*
 
 Lunes a viernes  
-10:00 a 17:00 hrs 
-Y sabados de 10:00 a 12:00`
+10:00 a 17:00 hrs  
+Sábados de 10:00 a 12:00`
         }
 
         // ==============================
-        // 6️⃣ MEDIOS DE PAGO
+        // MEDIOS DE PAGO
         // ==============================
 
         else if (mensaje === '6' || mensaje.includes('pago')) {
@@ -209,16 +209,18 @@ El abono de $10.000 se realiza vía transferencia al momento de agendar.`
         }
 
         // ==============================
-        // MENÚ PRINCIPAL (solo si no coincide nada)
+        // MENÚ PRINCIPAL
         // ==============================
 
         else {
             respuesta =
 `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣
 
-Muchas racias por escribirnos 😊, será un gusto ayudarte.
+Muchas gracias por escribirnos 😊  
+Será un gusto ayudarte.
 
 Por favor indícanos el número de la opción que necesitas:
+
 1️⃣ Reservar una hora  
 2️⃣ Ver precios y servicios  
 3️⃣ Ubicación de nuestras sucursales  
@@ -234,6 +236,5 @@ Por favor indícanos el número de la opción que necesitas:
 }
 
 iniciarBaileys()
-
 
 
