@@ -6,13 +6,27 @@ import Pino from "pino"
 const app = express()
 const PORT = process.env.PORT || 8080
 
-// Servidor para que Railway esté feliz (Acepta GET y HEAD)
-app.all("/", (req, res) => {
+// Middleware para capturar TODAS las peticiones a cualquier ruta
+app.use((req, res, next) => {
+    console.log(`📡 ${req.method} ${req.path} - Healthcheck recibido`)
+    // Siempre responder OK para cualquier ruta y método
     res.status(200).send("Bot Pie Consalud Online ✅")
+    // No llamamos a next() para evitar que siga procesando
 })
 
+// Ruta específica para QR (opcional, pero útil para debug)
+app.get("/qr", (req, res) => {
+    if (global.ultimoQR) {
+        res.json({ qr: global.ultimoQR })
+    } else {
+        res.json({ message: "QR no disponible aún" })
+    }
+})
+
+// Iniciar servidor
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`🌐 Servidor web activo en puerto ${PORT}`)
+    console.log(`📡 Escuchando en todas las rutas y métodos`)
 })
 
 async function iniciarBot() {
@@ -30,6 +44,9 @@ async function iniciarBot() {
         const { connection, lastDisconnect, qr } = update
 
         if (qr) {
+            // Guardar QR globalmente para el endpoint /qr
+            global.ultimoQR = qr
+            
             const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
             console.log("\n📲 ESCANEA ESTE QR PARA VINCULAR:")
             console.log(qrLink + "\n")
@@ -57,4 +74,5 @@ async function iniciarBot() {
     sock.ev.on("creds.update", saveCreds)
 }
 
+// Iniciar el bot después de configurar el servidor
 iniciarBot()
