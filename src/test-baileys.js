@@ -1,5 +1,5 @@
 // IMPORTACIÓN CORRECTA para Baileys 6.5.0
-import baileys from '@whisockets/baileys'
+import baileys from '@whiskeysockets/baileys'
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys
 
 import Pino from 'pino'
