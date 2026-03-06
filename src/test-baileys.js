@@ -1,6 +1,6 @@
 import express from "express"
-import baileys from "@whiskeysockets/baileys"
-import Pino from "pino"
+import { default as makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
+import pino from "pino"
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from 'url'
@@ -9,130 +9,146 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 8080
 
-// Servidor web mejorado con logs
-app.use((req, res) => {
-    console.log(`🌐 Healthcheck: ${req.method} ${req.url}`)
-    res.status(200).send("Bot Online")
+// Estado global
+let qrCode = null
+let connectionStatus = 'desconectado'
+let reintentos = 0
+
+// Servidor web con interfaz simple
+app.get('/', (req, res) => {
+    res.send(`
+        <html>
+            <head>
+                <title>Bot WhatsApp Pie Consalud</title>
+                <style>
+                    body { font-family: Arial; padding: 20px; text-align: center; }
+                    .qr { margin: 20px; padding: 20px; border: 2px solid #ccc; }
+                    .status { padding: 10px; margin: 10px; border-radius: 5px; }
+                    .conectado { background: #d4edda; color: #155724; }
+                    .desconectado { background: #f8d7da; color: #721c24; }
+                    .esperando { background: #fff3cd; color: #856404; }
+                </style>
+                <meta http-equiv="refresh" content="5">
+            </head>
+            <body>
+                <h1>🤖 Bot WhatsApp - Pie Consalud</h1>
+                
+                <div class="status ${connectionStatus === 'conectado' ? 'conectado' : connectionStatus === 'esperando' ? 'esperando' : 'desconectado'}">
+                    <h3>Estado: ${connectionStatus}</h3>
+                    <p>Reintentos: ${reintentos}</p>
+                </div>
+                
+                ${qrCode ? `
+                    <div class="qr">
+                        <h3>📲 Escanea este código QR</h3>
+                        <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrCode)}" />
+                        <p>El QR expira en 20 segundos aprox. Si no alcanzas, espera a que se genere uno nuevo.</p>
+                    </div>
+                ` : connectionStatus !== 'conectado' ? 
+                    '<p>⏳ Generando QR, espera unos segundos...</p>' : 
+                    '<p>✅ Bot conectado correctamente</p>'
+                }
+            </body>
+        </html>
+    `)
 })
 
 app.listen(PORT, "0.0.0.0", () => {
-    console.log(`🌐 Servidor web en puerto ${PORT}`)
+    console.log(`🌐 Servidor web: http://localhost:${PORT}`)
 })
 
-// Log del entorno
-console.log("🔧 Node version:", process.version)
-console.log("📁 Directorio:", process.cwd())
-console.log("📦 Versión Baileys:", baileys)
-
-// Extraer makeWASocket correctamente
-const { 
-    default: makeWASocket, 
-    useMultiFileAuthState, 
-    DisconnectReason,
-    Browsers 
-} = baileys
-
-// Función para limpiar TODO
-function limpiarTodo() {
-    const carpetas = [
-        "./auth_info",
-        "./auth_info_baileys",
-        "./session",
-        "./.auth"
-    ]
-    
-    carpetas.forEach(carpeta => {
-        const ruta = path.join(process.cwd(), carpeta)
-        if (fs.existsSync(ruta)) {
-            console.log(`🧹 Eliminando: ${carpeta}`)
-            fs.rmSync(ruta, { recursive: true, force: true })
-        }
-    })
+// Función para limpiar sesión
+function limpiarSesion() {
+    const authPath = path.join(process.cwd(), "auth_info")
+    if (fs.existsSync(authPath)) {
+        fs.rmSync(authPath, { recursive: true, force: true })
+    }
+    console.log("🧹 Sesión limpiada")
 }
 
 async function iniciarBot() {
-    console.log("\n🚀 Iniciando bot...")
-    
-    // Limpiar siempre al inicio por ahora
-    limpiarTodo()
-    
     try {
-        console.log("📁 Creando carpeta auth_info...")
+        console.log("\n🚀 Iniciando bot...")
+        
+        // Limpiar sesión si hay muchas reconexiones
+        if (reintentos > 3) {
+            limpiarSesion()
+            reintentos = 0
+        }
+        
+        connectionStatus = 'esperando'
+        
+        // Asegurar carpeta auth
         fs.mkdirSync("./auth_info", { recursive: true })
         
-        console.log("🔐 Obteniendo estado de autenticación...")
-        const { state, saveCreds } = await useMultiFileAuthState("./auth_info")
+        // Configurar autenticación
+        const { state, saveCreds } = await useMultiFileAuthState("auth_info")
         
-        console.log("🔌 Creando socket...")
+        // Crear socket
         const sock = makeWASocket({
             auth: state,
-            logger: Pino({ level: "debug" }), // Cambiado a debug para ver más
-            browser: Browsers.appropriate("Pie Consalud"),
+            logger: pino({ level: 'error' }),
+            browser: ["Pie Consalud", "Chrome", "1.0"],
+            printQRInTerminal: false,
             syncFullHistory: false,
-            generateHighQualityLinkPreview: false,
-            // Opciones de conexión
-            connectTimeoutMs: 60000,
+            connectTimeoutMs: 30000,
             keepAliveIntervalMs: 30000,
             defaultQueryTimeoutMs: 60000,
-            version: [2, 3000, 1015901307] // Versión específica de WhatsApp
+            version: [2, 2413, 1] // Versión más estable
         })
-
-        console.log("✅ Socket creado, esperando eventos...")
-
-        sock.ev.on("connection.update", (update) => {
-            console.log("📡 Evento connection.update:", Object.keys(update))
+        
+        // Manejar eventos
+        sock.ev.on('connection.update', (update) => {
+            const { connection, lastDisconnect, qr } = update
             
-            const { connection, lastDisconnect, qr, isNewLogin } = update
-
             if (qr) {
-                console.log("\n========== QR GENERADO ==========")
-                console.log(qr)
-                console.log("===================================")
+                qrCode = qr
+                console.log("\n📲 NUEVO QR GENERADO")
+                console.log("Link para escanear:")
+                console.log(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`)
+                console.log("⏳ QR válido por 20 segundos...\n")
                 
-                const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
-                console.log("\n📲 O escanea aquí:")
-                console.log(qrLink)
-                console.log("")
+                // El QR expira, programar limpieza
+                setTimeout(() => {
+                    if (connectionStatus !== 'conectado') {
+                        console.log("⌛ QR expirado, esperando nuevo...")
+                    }
+                }, 20000)
             }
-
-            if (isNewLogin) {
-                console.log("✅ Nuevo login exitoso")
+            
+            if (connection === 'open') {
+                console.log("\n✅ ¡CONECTADO A WHATSAPP!\n")
+                connectionStatus = 'conectado'
+                qrCode = null
+                reintentos = 0
             }
-
-            if (connection === "open") {
-                console.log("🎉 ¡CONECTADO A WHATSAPP!")
-            }
-
-            if (connection === "close") {
+            
+            if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode
-                const error = lastDisconnect?.error
-                
-                console.log("❌ Conexión cerrada")
-                console.log("Código:", statusCode)
-                console.log("Error completo:", error)
+                console.log(`❌ Conexión cerrada (${statusCode || 'desconocido'})`)
                 
                 if (statusCode === 405) {
-                    console.log("⚠️ Error 405 - Problema de autenticación")
-                    setTimeout(() => iniciarBot(), 5000)
-                } else {
-                    setTimeout(() => iniciarBot(), 5000)
+                    console.log("⚠️ Error de autenticación, limpiando sesión...")
+                    limpiarSesion()
                 }
+                
+                connectionStatus = 'desconectado'
+                reintentos++
+                
+                console.log(`🔄 Reintentando (intento ${reintentos})...`)
+                setTimeout(iniciarBot, 5000)
             }
         })
-
-        sock.ev.on("creds.update", saveCreds)
         
-        // Evento adicional para debug
-        sock.ev.on("messages.upsert", () => {})
-        
-        console.log("🎧 Escuchando eventos...")
+        // Guardar credenciales
+        sock.ev.on('creds.update', saveCreds)
         
     } catch (error) {
-        console.error("💥 Error crítico:", error)
-        setTimeout(() => iniciarBot(), 5000)
+        console.error("Error:", error)
+        connectionStatus = 'desconectado'
+        setTimeout(iniciarBot, 5000)
     }
 }
 
-// Ejecutar
-console.log("🏁 Iniciando aplicación...")
+// Iniciar
 iniciarBot()
