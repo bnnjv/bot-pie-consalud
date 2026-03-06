@@ -1,23 +1,22 @@
 import express from "express"
 import makeWASocket, {
     DisconnectReason,
-    useMultiFileAuthState
+    useMultiFileAuthState,
+    Browsers
 } from "@whiskeysockets/baileys"
 
 import Pino from "pino"
 import QRCode from "qrcode"
 
 const app = express()
-
-// puerto Railway
 const PORT = process.env.PORT || 8080
 
-// ruta healthcheck Railway
+// Ruta para Railway
 app.get("/", (req, res) => {
     res.status(200).send("Bot Online")
 })
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
     console.log(`🌐 Servidor web activo en puerto ${PORT}`)
 })
 
@@ -29,8 +28,8 @@ async function iniciarBot() {
         logger: Pino({ level: "silent" }),
         auth: state,
 
-        // 🔧 FIX ERROR 405
-        browser: ["Ubuntu", "Chrome", "20.0.04"],
+        // 🔹 ESTA LÍNEA ARREGLA EL ERROR 405
+        browser: Browsers.macOS("Chrome"),
 
         printQRInTerminal: false
     })
@@ -43,12 +42,12 @@ async function iniciarBot() {
 
             console.log("\n📲 ESCANEA ESTE QR:\n")
 
-            const qrTerminal = await QRCode.toString(qr, {
+            const qrImage = await QRCode.toString(qr, {
                 type: "terminal",
                 small: true
             })
 
-            console.log(qrTerminal)
+            console.log(qrImage)
         }
 
         if (connection === "open") {
@@ -70,7 +69,6 @@ async function iniciarBot() {
                 }, 5000)
 
             } else {
-
                 console.log("⚠️ Sesión cerrada. Borra auth_info para volver a escanear QR.")
             }
         }
