@@ -3,13 +3,15 @@ import pino from "pino"
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from 'url'
-// Importación correcta para Baileys 6.5.0
-import makeWASocket from "@whiskeysockets/baileys"
-import { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
+// IMPORTACIÓN CORREGIDA para Baileys 6.5.0
+import * as baileys from "@whiskeysockets/baileys"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 8080
+
+// Extraer las funciones necesarias
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys
 
 // Estado global
 let qrCode = null
@@ -86,17 +88,19 @@ async function iniciarBot() {
         // Configurar autenticación
         const { state, saveCreds } = await useMultiFileAuthState("auth_info")
         
+        // Verificar que makeWASocket existe
+        console.log("🔧 makeWASocket disponible:", typeof makeWASocket)
+        
         // Crear socket
         const sock = makeWASocket({
             auth: state,
             logger: pino({ level: 'error' }),
             browser: ["Pie Consalud", "Chrome", "1.0"],
-            printQRInTerminal: true, // Para ver QR en terminal
+            printQRInTerminal: true,
             syncFullHistory: false,
             connectTimeoutMs: 30000,
             keepAliveIntervalMs: 30000,
             defaultQueryTimeoutMs: 60000
-            // En 6.5.0 no se especifica versión
         })
         
         console.log("✅ Socket creado, esperando QR...")
@@ -113,7 +117,6 @@ async function iniciarBot() {
                 console.log(`Link: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`)
                 console.log("=".repeat(50) + "\n")
                 
-                // El QR expira rápido
                 setTimeout(() => {
                     if (connectionStatus !== 'conectado') {
                         console.log("⌛ QR expirado, esperando nuevo...")
@@ -136,7 +139,6 @@ async function iniciarBot() {
                 
                 console.log(`❌ Conexión cerrada: ${reason}`)
                 
-                // Verificar si es error de autenticación
                 if (reason.includes('405') || reason.includes('logged out')) {
                     console.log("⚠️ Error de autenticación, limpiando sesión...")
                     limpiarSesion()
@@ -150,16 +152,12 @@ async function iniciarBot() {
             }
         })
         
-        // Guardar credenciales
         sock.ev.on('creds.update', saveCreds)
-        
-        // Manejar mensajes (opcional)
-        sock.ev.on('messages.upsert', (m) => {
-            // Aquí puedes procesar mensajes cuando esté conectado
-        })
         
     } catch (error) {
         console.error("Error en iniciarBot:", error)
+        console.error("Tipo de error:", error.constructor.name)
+        console.error("Mensaje:", error.message)
         connectionStatus = 'desconectado'
         setTimeout(iniciarBot, 5000)
     }
