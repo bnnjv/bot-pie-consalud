@@ -9,12 +9,12 @@ import QRCode from "qrcode"
 
 const app = express()
 
-// 🔹 Puerto de Railway
+// puerto Railway
 const PORT = process.env.PORT || 8080
 
-// 🔹 Ruta para que Railway verifique que el bot está vivo
+// ruta healthcheck Railway
 app.get("/", (req, res) => {
-    res.send("Bot Online")
+    res.status(200).send("Bot Online")
 })
 
 app.listen(PORT, () => {
@@ -26,8 +26,13 @@ async function iniciarBot() {
     const { state, saveCreds } = await useMultiFileAuthState("auth_info")
 
     const sock = makeWASocket({
-        logger: Pino({ level: "info" }),
-        auth: state
+        logger: Pino({ level: "silent" }),
+        auth: state,
+
+        // 🔧 FIX ERROR 405
+        browser: ["Ubuntu", "Chrome", "20.0.04"],
+
+        printQRInTerminal: false
     })
 
     sock.ev.on("connection.update", async (update) => {
@@ -38,12 +43,12 @@ async function iniciarBot() {
 
             console.log("\n📲 ESCANEA ESTE QR:\n")
 
-            const qrImage = await QRCode.toString(qr, {
+            const qrTerminal = await QRCode.toString(qr, {
                 type: "terminal",
                 small: true
             })
 
-            console.log(qrImage)
+            console.log(qrTerminal)
         }
 
         if (connection === "open") {
@@ -65,6 +70,7 @@ async function iniciarBot() {
                 }, 5000)
 
             } else {
+
                 console.log("⚠️ Sesión cerrada. Borra auth_info para volver a escanear QR.")
             }
         }
