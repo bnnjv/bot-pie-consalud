@@ -1,23 +1,30 @@
 import express from "express"
-import makeWASocket, {
-    useMultiFileAuthState,
-    DisconnectReason
-} from "@whiskeysockets/baileys"
+import baileys from "@whiskeysockets/baileys"
 import Pino from "pino"
 
-// servidor web para Railway
+const {
+    default: makeWASocket,
+    DisconnectReason,
+    useMultiFileAuthState
+} = baileys
+
 const app = express()
+
 const PORT = process.env.PORT || 8080
 
+// servidor web para Railway
 app.get("/", (req, res) => {
     res.send("Bot Pie Consalud Online")
 })
 
 app.listen(PORT, () => {
-    console.log("🌐 Servidor web activo en puerto", PORT)
+    console.log(`🌐 Servidor web activo en puerto ${PORT}`)
 })
 
-// iniciar bot
+// ==============================
+// BOT WHATSAPP
+// ==============================
+
 async function iniciarBot() {
 
     console.log("🚀 Bot de Pie Consalud iniciando...\n")
@@ -25,31 +32,28 @@ async function iniciarBot() {
     const { state, saveCreds } = await useMultiFileAuthState("auth_info")
 
     const sock = makeWASocket({
-        auth: state,
         logger: Pino({ level: "silent" }),
+        auth: state,
         browser: ["Pie Consalud Bot", "Chrome", "1.0"]
     })
 
-    sock.ev.on("connection.update", (update) => {
+    sock.ev.on("connection.update", async (update) => {
 
         const { connection, lastDisconnect, qr } = update
 
-        // QR
         if (qr) {
 
             const qrLink =
                 `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
 
-            console.log("\n📲 ESCANEA ESTE QR PARA VINCULAR WHATSAPP:\n")
+            console.log("\n📲 ESCANEA ESTE QR:")
             console.log(qrLink + "\n")
         }
 
-        // conexión abierta
         if (connection === "open") {
             console.log("✅ WhatsApp conectado correctamente")
         }
 
-        // conexión cerrada
         if (connection === "close") {
 
             const reason = lastDisconnect?.error?.output?.statusCode
@@ -65,8 +69,7 @@ async function iniciarBot() {
                 }, 5000)
 
             } else {
-
-                console.log("⚠️ Sesión cerrada. Borra la carpeta auth_info para volver a escanear QR.")
+                console.log("⚠️ Sesión cerrada. Borra auth_info para generar QR nuevo.")
             }
         }
     })
