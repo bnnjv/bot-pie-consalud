@@ -1,25 +1,24 @@
 import express from "express"
 import makeWASocket, {
     DisconnectReason,
-    useMultiFileAuthState,
-    Browsers
+    useMultiFileAuthState
 } from "@whiskeysockets/baileys"
-
 import Pino from "pino"
 import QRCode from "qrcode"
 
+// servidor web para Railway
 const app = express()
 const PORT = process.env.PORT || 8080
 
-// Ruta para Railway
 app.get("/", (req, res) => {
-    res.status(200).send("Bot Online")
+    res.send("Bot Online")
 })
 
-app.listen(PORT, "0.0.0.0", () => {
+app.listen(PORT, () => {
     console.log(`🌐 Servidor web activo en puerto ${PORT}`)
 })
 
+// iniciar bot
 async function iniciarBot() {
 
     const { state, saveCreds } = await useMultiFileAuthState("auth_info")
@@ -28,16 +27,15 @@ async function iniciarBot() {
         logger: Pino({ level: "silent" }),
         auth: state,
 
-        // 🔹 ESTA LÍNEA ARREGLA EL ERROR 405
-        browser: Browsers.macOS("Chrome"),
-
-        printQRInTerminal: false
+        // ESTA LINEA ARREGLA EL ERROR 405
+        browser: ["Chrome", "Desktop", "1.0.0"]
     })
 
     sock.ev.on("connection.update", async (update) => {
 
         const { connection, lastDisconnect, qr } = update
 
+        // mostrar QR
         if (qr) {
 
             console.log("\n📲 ESCANEA ESTE QR:\n")
@@ -50,10 +48,12 @@ async function iniciarBot() {
             console.log(qrImage)
         }
 
+        // conectado
         if (connection === "open") {
             console.log("✅ WhatsApp conectado correctamente")
         }
 
+        // conexión cerrada
         if (connection === "close") {
 
             const reason = lastDisconnect?.error?.output?.statusCode
@@ -69,6 +69,7 @@ async function iniciarBot() {
                 }, 5000)
 
             } else {
+
                 console.log("⚠️ Sesión cerrada. Borra auth_info para volver a escanear QR.")
             }
         }
