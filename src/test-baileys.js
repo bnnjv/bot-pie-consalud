@@ -1,5 +1,5 @@
 // IMPORTACIÓN CORRECTA para Baileys 6.5.0
-import baileys from '@whiskeysockets/baileys'
+import baileys from '@whisockets/baileys'
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys
 
 import Pino from 'pino'
@@ -17,7 +17,51 @@ let sockInstance = null
 let ultimoQR = null
 
 // ==============================
-// SERVIDOR WEB (tu código original mejorado)
+// CONFIGURACIÓN DE SEGURIDAD ANTI-BAN
+// ==============================
+
+const SEGURIDAD = {
+    // Límites para no ser detectado como spam
+    mensajesPorMinuto: 0,
+    ultimoReset: Date.now(),
+    maxPorMinuto: 8, // Máximo 8 mensajes por minuto
+    
+    // Control de conversaciones
+    conversaciones: new Map(), // Guardar timestamp de últimas respuestas
+    
+    // Función para verificar límites
+    puedeEnviar: function(from) {
+        // Resetear contador cada minuto
+        if (Date.now() - this.ultimoReset > 60000) {
+            this.mensajesPorMinuto = 0
+            this.ultimoReset = Date.now()
+        }
+        
+        // Verificar límite global
+        if (this.mensajesPorMinuto >= this.maxPorMinuto) {
+            console.log('⚠️ Límite de mensajes por minuto alcanzado')
+            return false
+        }
+        
+        // Verificar spam a mismo usuario (máximo 1 mensaje cada 10 segundos)
+        const ultimoMensaje = this.conversaciones.get(from) || 0
+        if (Date.now() - ultimoMensaje < 10000) {
+            console.log('⚠️ Enviando mensajes muy rápido al mismo usuario')
+            return false
+        }
+        
+        return true
+    },
+    
+    // Registrar envío
+    registrarEnvio: function(from) {
+        this.mensajesPorMinuto++
+        this.conversaciones.set(from, Date.now())
+    }
+}
+
+// ==============================
+// SERVIDOR WEB
 // ==============================
 
 app.get('/', (req, res) => {
@@ -38,9 +82,10 @@ app.get('/', (req, res) => {
             <body>
                 <div class="container">
                     <div class="card">
-                        <h1>🤖 Bot Pie Consalud</h1>
+                        <h1>🤖 Bot Pie Consalud - MODO HUMANO</h1>
                         <p>Estado: <span class="${botConectado ? 'online' : 'offline'}">${botConectado ? '✅ CONECTADO' : '❌ DESCONECTADO'}</span></p>
                         <p>📊 Sesiones activas: ${Object.keys(sesiones).length}</p>
+                        <p>⏱️ Mensajes/minuto: ${SEGURIDAD.mensajesPorMinuto}/${SEGURIDAD.maxPorMinuto}</p>
                     </div>
                     
                     ${!botConectado && ultimoQR ? `
@@ -55,6 +100,7 @@ app.get('/', (req, res) => {
                     <div class="card">
                         <h3>🔧 ACCIONES</h3>
                         <button onclick="location.href='/test'">🔍 Diagnosticar</button>
+                        <button onclick="location.href='/limpiar'">🧹 Limpiar Sesión</button>
                     </div>
                 </div>
             </body>
@@ -68,8 +114,25 @@ app.get('/test', (req, res) => {
         sesiones_activas: Object.keys(sesiones).length,
         sock_exists: !!sockInstance,
         user: sockInstance?.user || null,
+        seguridad: {
+            mensajesPorMinuto: SEGURIDAD.mensajesPorMinuto,
+            maxPorMinuto: SEGURIDAD.maxPorMinuto,
+            conversacionesActivas: SEGURIDAD.conversaciones.size
+        },
         timestamp: new Date().toISOString()
     })
+})
+
+app.get('/limpiar', (req, res) => {
+    try {
+        const authPath = path.join(process.cwd(), 'auth_info')
+        if (fs.existsSync(authPath)) {
+            fs.rmSync(authPath, { recursive: true, force: true })
+        }
+        res.send('🧹 Sesión limpiada. Reinicia el bot.')
+    } catch (error) {
+        res.send('❌ Error al limpiar: ' + error.message)
+    }
 })
 
 app.get('/qr', (req, res) => {
@@ -82,15 +145,16 @@ app.get('/qr', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log('🌐 Servidor web activo en puerto', PORT)
+    console.log('🤖 Bot en MODO HUMANO - Con delays y límites anti-ban')
     iniciarBaileys()
 })
 
 // ==============================
-// FUNCIÓN PRINCIPAL DEL BOT (CORREGIDA)
+// FUNCIÓN PRINCIPAL DEL BOT - MODO HUMANO
 // ==============================
 
 async function iniciarBaileys() {
-    console.log('🚀 Bot de Pie Consalud iniciado...\n')
+    console.log('🚀 Bot de Pie Consalud en MODO HUMANO...\n')
 
     try {
         const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
@@ -101,7 +165,12 @@ async function iniciarBaileys() {
             browser: ['Pie Consalud Bot', 'Chrome', '1.0'],
             printQRInTerminal: true,
             syncFullHistory: false,
-            defaultQueryTimeoutMs: 60000
+            defaultQueryTimeoutMs: 60000,
+            
+            // Configuración para parecer humano
+            emitOwnEvents: false,
+            keepAliveIntervalMs: 25000, // Latidos más espaciados
+            markOnlineOnConnect: false // No marcar siempre online
         })
         
         sockInstance = sock
@@ -117,62 +186,56 @@ async function iniciarBaileys() {
                 ultimoQR = qr
                 botConectado = false
                 const link = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
-                console.log('\n📲 ESCANEA ESTE QR PARA VINCULAR PIE CONSALUD:')
+                console.log('\n📲 ESCANEA ESTE QR:')
                 console.log(link + '\n')
             }
 
             if (connection === 'open') {
-                console.log('✅ WhatsApp conectado correctamente')
+                console.log('✅ WhatsApp conectado - MODO HUMANO ACTIVADO')
                 console.log('👤 Usuario:', sock.user?.id)
                 botConectado = true
                 ultimoQR = null
             }
 
             if (connection === 'close') {
-                const reason = lastDisconnect?.error?.output?.statusCode
-                console.log('❌ Conexión cerrada, código:', reason)
+                const statusCode = lastDisconnect?.error?.output?.statusCode
+                console.log('❌ Conexión cerrada, código:', statusCode)
                 botConectado = false
                 
-                if (reason !== DisconnectReason.loggedOut) {
-                    console.log('🔄 Reintentando conexión en 5 segundos...')
-                    setTimeout(iniciarBaileys, 5000)
+                if (statusCode === 515) {
+                    console.log('⚠️ Código 515: WhatsApp pide descanso. Esperando 1 hora...')
+                    setTimeout(iniciarBaileys, 3600000) // Esperar 1 hora
+                } else if (statusCode !== DisconnectReason.loggedOut) {
+                    console.log('🔄 Reintentando en 30 segundos...')
+                    setTimeout(iniciarBaileys, 30000)
                 } else {
                     console.log('⚠️ Sesión cerrada. Se generará nuevo QR...')
                     ultimoQR = null
-                    setTimeout(iniciarBaileys, 5000)
+                    setTimeout(iniciarBaileys, 30000)
                 }
             }
         })
 
         // ==============================
-        // MENSAJES - CORREGIDO CON SUGERENCIAS DE CHATGPT
+        // MENSAJES - MODO HUMANO ACTIVADO
         // ==============================
 
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             try {
-                // 🔴 FILTRO CRÍTICO #1: Solo mensajes nuevos
-                if (type !== 'notify') {
-                    console.log('⏭️ Evento ignorado (tipo:', type, ')')
-                    return
-                }
+                // Solo mensajes nuevos
+                if (type !== 'notify') return
 
                 const msg = messages[0]
                 
                 // Ignorar mensajes propios
-                if (!msg.message || msg.key.fromMe) {
-                    console.log('⏭️ Ignorando mensaje propio o vacío')
-                    return
-                }
+                if (!msg.message || msg.key.fromMe) return
 
                 const from = msg.key.remoteJid
                 
-                // 🔴 FILTRO CRÍTICO #2: Solo chats privados
-                if (from.includes('@g.us')) {
-                    console.log('⏭️ Ignorando mensaje de grupo:', from)
-                    return
-                }
+                // Solo chats privados
+                if (from.includes('@g.us')) return
 
-                // 🔴 CORRECCIÓN #3: Capturar TODOS los tipos de mensaje
+                // Extraer texto de TODOS los posibles formatos
                 const text = 
                     msg.message?.conversation ||
                     msg.message?.extendedTextMessage?.text ||
@@ -180,172 +243,96 @@ async function iniciarBaileys() {
                     msg.message?.imageMessage?.caption ||
                     ''
 
-                console.log('📨 Mensaje recibido de:', from)
-                console.log('📨 Contenido:', text)
+                if (!text) return
 
-                if (!text) {
-                    console.log('⏭️ Mensaje sin texto, ignorando')
-                    return
-                }
+                console.log('📨 Mensaje de:', from, '->', text)
 
                 const mensaje = text.toLowerCase().trim()
                 let respuesta = ''
 
-                // ===== TU CÓDIGO ORIGINAL DE RESPUESTAS =====
-                // (exactamente igual a como lo tenías)
-
+                // ===== TU LÓGICA DE RESPUESTAS (sin cambios) =====
                 if (mensaje === 'ahumada') {
                     sesiones[from] = { sucursal: 'ahumada' }
-                    respuesta = 
-`✅ Has seleccionado la sucursal *Ahumada*.
-
-Ahora puedes escribir:
-4️⃣ Para recibir los datos de abono
-1️⃣ Para reservar tu hora`
+                    respuesta = `✅ Has seleccionado la sucursal *Ahumada*.\n\nAhora puedes escribir:\n4️⃣ Para recibir los datos de abono\n1️⃣ Para reservar tu hora`
                 }
-
                 else if (mensaje === 'providencia') {
                     sesiones[from] = { sucursal: 'providencia' }
-                    respuesta = 
-`✅ Has seleccionado la sucursal *Providencia*.
-
-Ahora puedes escribir:
-4️⃣ Para recibir los datos de abono
-1️⃣ Para reservar tu hora`
+                    respuesta = `✅ Has seleccionado la sucursal *Providencia*.\n\nAhora puedes escribir:\n4️⃣ Para recibir los datos de abono\n1️⃣ Para reservar tu hora`
                 }
-
                 else if (mensaje === '1' || mensaje.includes('hora') || mensaje.includes('reservar')) {
-                    respuesta = 
-`📅 *Reserva de Hora*
-
-Selecciona tu sucursal y revisa disponibilidad:
-
-🏙️ Ahumada  
-https://calendly.com/pieconsalud-santiagocentro/reserva-tu-hora
-
-🏙️ Providencia  
-https://calendly.com/pieconsalud-providencia/reserva-tu-hora
-
-⚠️ Importante: asistir sin esmalte.`
+                    respuesta = `📅 *Reserva de Hora*\n\nSelecciona tu sucursal y revisa disponibilidad:\n\n🏙️ Ahumada  \nhttps://calendly.com/pieconsalud-santiagocentro/reserva-tu-hora\n\n🏙️ Providencia  \nhttps://calendly.com/pieconsalud-providencia/reserva-tu-hora\n\n⚠️ Importante: asistir sin esmalte.`
                 }
-
                 else if (mensaje === '2' || mensaje.includes('precio')) {
-                    respuesta = 
-`🏷️ *Valores de Atención – Pie Consalud*
-
-Atención Podológica: *$20.000*
-
-Tratamientos como:
-• Uña encarnada
-• Onicomicosis
-• Pie diabético
-
-El valor puede variar según evaluación profesional.`
+                    respuesta = `🏷️ *Valores de Atención – Pie Consalud*\n\nAtención Podológica: *$20.000*\n\nTratamientos como:\n• Uña encarnada\n• Onicomicosis\n• Pie diabético\n\nEl valor puede variar según evaluación profesional.`
                 }
-
                 else if (mensaje === '3' || mensaje.includes('direccion') || mensaje.includes('ubicacion')) {
-                    respuesta = 
-`📍 *Nuestras Sucursales*
-
-🏙️ Ahumada  
-Cerca de Metro U. de Chile / Plaza de Armas
-
-🏙️ Providencia  
-Cerca de Metro Tobalaba
-
-Escribe el nombre de la sucursal para continuar.`
+                    respuesta = `📍 *Nuestras Sucursales*\n\n🏙️ Ahumada  \nCerca de Metro U. de Chile / Plaza de Armas\n\n🏙️ Providencia  \nCerca de Metro Tobalaba\n\nEscribe el nombre de la sucursal para continuar.`
                 }
-
                 else if (mensaje === '4' || mensaje.includes('abono')) {
                     if (!sesiones[from]?.sucursal) {
-                        respuesta = 
-`Para enviarte los datos de abono, primero indícanos la sucursal:
-
-• Ahumada
-• Providencia`
+                        respuesta = `Para enviarte los datos de abono, primero indícanos la sucursal:\n\n• Ahumada\n• Providencia`
                     }
                     else if (sesiones[from].sucursal === 'ahumada') {
-                        respuesta = 
-`💳 *Datos de Abono – Sucursal Ahumada*
-
-Banco Estado
-Cuenta Corriente
-N° 29100119011
-Rut: 77.478.206-0
-Correo: Piesalud.21@gmail.com
-
-Abono: *$10.000*
-Se descuenta del total de la atención.`
+                        respuesta = `💳 *Datos de Abono – Sucursal Ahumada*\n\nBanco Estado\nCuenta Corriente\nN° 29100119011\nRut: 77.478.206-0\nCorreo: Piesalud.21@gmail.com\n\nAbono: *$10.000*\nSe descuenta del total de la atención.`
                     }
                     else {
-                        respuesta = 
-`💳 *Datos de Abono – Sucursal Providencia*
-
-Banco Chile
-Cuenta Vista
-N° 000083725182
-Rut: 77.478.206-0
-Correo: Pieconsalud@gmail.com
-
-Abono: *$10.000*
-Se descuenta del total de la atención.`
+                        respuesta = `💳 *Datos de Abono – Sucursal Providencia*\n\nBanco Chile\nCuenta Vista\nN° 000083725182\nRut: 77.478.206-0\nCorreo: Pieconsalud@gmail.com\n\nAbono: *$10.000*\nSe descuenta del total de la atención.`
                     }
                 }
-
                 else if (mensaje === '5' || mensaje.includes('horario')) {
-                    respuesta = 
-`🕒 *Horario de Atención*
-
-Lunes a viernes
-10:00 a 17:00 hrs
-
-Sábados
-10:00 a 12:00 hrs`
+                    respuesta = `🕒 *Horario de Atención*\n\nLunes a viernes\n10:00 a 17:00 hrs\n\nSábados\n10:00 a 12:00 hrs`
                 }
-
                 else if (mensaje === '6' || mensaje.includes('pago')) {
-                    respuesta = 
-`💰 *Medios de Pago*
-
-✔️ Transferencia electrónica
-✔️ Efectivo
-
-El abono de $10.000 se realiza vía transferencia al momento de agendar.`
+                    respuesta = `💰 *Medios de Pago*\n\n✔️ Transferencia electrónica\n✔️ Efectivo\n\nEl abono de $10.000 se realiza vía transferencia al momento de agendar.`
                 }
-
                 else {
-                    respuesta = 
-`👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣
-
-Por favor selecciona una opción:
-
-1️⃣ Reservar una hora
-2️⃣ Ver precios
-3️⃣ Ubicación
-4️⃣ Datos para abono
-5️⃣ Horarios
-6️⃣ Medios de pago`
+                    respuesta = `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣\n\nPor favor selecciona una opción:\n\n1️⃣ Reservar una hora\n2️⃣ Ver precios\n3️⃣ Ubicación\n4️⃣ Datos para abono\n5️⃣ Horarios\n6️⃣ Medios de pago`
                 }
 
-                // Enviar respuesta
+                // ===== MODO HUMANO: Comportamiento natural =====
                 if (respuesta) {
-                    console.log('📤 Enviando respuesta a:', from)
+                    
+                    // Verificar límites de seguridad
+                    if (!SEGURIDAD.puedeEnviar(from)) {
+                        console.log('⚠️ Límites de seguridad activados, esperando...')
+                        return
+                    }
+                    
+                    // 1. Indicar que está escribiendo (muy humano)
+                    await sock.sendPresenceUpdate('composing', from)
+                    
+                    // 2. Delay aleatorio (2-5 segundos) - CLAVE ANTI-BAN
+                    const delayHumano = Math.floor(Math.random() * 3000) + 2000 // 2-5 segundos
+                    console.log(`⏳ Esperando ${delayHumano}ms para parecer humano...`)
+                    await new Promise(resolve => setTimeout(resolve, delayHumano))
+                    
+                    // 3. Dejar de escribir
+                    await sock.sendPresenceUpdate('paused', from)
+                    
+                    // 4. Pequeña pausa antes de enviar
+                    await new Promise(resolve => setTimeout(resolve, 500))
+                    
+                    // 5. Enviar mensaje
+                    console.log('📤 Enviando respuesta...')
                     await sock.sendMessage(from, { text: respuesta })
-                    console.log('✅ Respuesta enviada')
+                    
+                    // 6. Registrar el envío
+                    SEGURIDAD.registrarEnvio(from)
+                    
+                    console.log('✅ Respuesta enviada (modo humano)')
                 }
 
             } catch (error) {
-                console.error('❌ Error procesando mensaje:', error)
+                console.error('❌ Error:', error)
             }
         })
 
-        // Guardar credenciales
         sock.ev.on('creds.update', saveCreds)
         
-        console.log('🎧 Bot escuchando mensajes...')
+        console.log('🎧 Bot en MODO HUMANO - Respuestas con delays naturales')
 
     } catch (error) {
-        console.error('💥 Error iniciando bot:', error)
-        setTimeout(iniciarBaileys, 5000)
+        console.error('💥 Error:', error)
+        setTimeout(iniciarBaileys, 30000)
     }
 }
