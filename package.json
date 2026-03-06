@@ -1,7 +1,6 @@
 {
   "name": "base-js-baileys-json",
   "version": "1.0.0",
-  "description": "Bot WhatsApp Pie Consalud",
   "type": "module",
   "main": "src/test-baileys.js",
   "scripts": {
@@ -11,7 +10,7 @@
     "node": "18.x"
   },
   "dependencies": {
-    "@whiskeysockets/baileys": "^7.0.0-rc.9",
+    "@whiskeysockets/baileys": "6.7.7",
     "express": "^4.18.2",
     "pino": "^8.17.0"
   }
