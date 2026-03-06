@@ -2,77 +2,99 @@ import express from "express"
 import baileys from "@whiskeysockets/baileys"
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys
 import Pino from "pino"
+import fs from "fs"
+import path from "path"
 
 const app = express()
 const PORT = process.env.PORT || 8080
 
-// Middleware para capturar TODAS las peticiones a cualquier ruta
-app.use((req, res, next) => {
-    console.log(`📡 ${req.method} ${req.path} - Healthcheck recibido`)
-    // Siempre responder OK para cualquier ruta y método
-    res.status(200).send("Bot Pie Consalud Online ✅")
-    // No llamamos a next() para evitar que siga procesando
+// Middleware para healthchecks
+app.use((req, res) => {
+    res.status(200).send("Bot Online")
 })
 
-// Ruta específica para QR (opcional, pero útil para debug)
-app.get("/qr", (req, res) => {
-    if (global.ultimoQR) {
-        res.json({ qr: global.ultimoQR })
-    } else {
-        res.json({ message: "QR no disponible aún" })
-    }
-})
-
-// Iniciar servidor
 app.listen(PORT, "0.0.0.0", () => {
     console.log(`🌐 Servidor web activo en puerto ${PORT}`)
-    console.log(`📡 Escuchando en todas las rutas y métodos`)
 })
+
+// Función para limpiar sesión corrupta
+function limpiarSesionCorrupta() {
+    const authPath = path.join(process.cwd(), "auth_info")
+    if (fs.existsSync(authPath)) {
+        console.log("🧹 Limpiando sesión corrupta...")
+        fs.rmSync(authPath, { recursive: true, force: true })
+        console.log("✅ Sesión eliminada")
+    }
+}
 
 async function iniciarBot() {
     console.log("🚀 Bot de Pie Consalud iniciando...\n")
 
-    const { state, saveCreds } = await useMultiFileAuthState("./auth_info")
+    // Verificar si debemos limpiar la sesión
+    const deberiaLimpiar = process.env.CLEAN_SESSION === "true" || !fs.existsSync("./auth_info")
+    if (deberiaLimpiar) {
+        limpiarSesionCorrupta()
+    }
 
-    const sock = makeWASocket({
-        auth: state,
-        logger: Pino({ level: "silent" }),
-        browser: ["Pie Consalud Bot", "Chrome", "1.0"]
-    })
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState("./auth_info")
 
-    sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect, qr } = update
+        const sock = makeWASocket({
+            auth: state,
+            logger: Pino({ level: "silent" }),
+            browser: ["Pie Consalud Bot", "Chrome", "1.0"],
+            // Intentar con opciones adicionales para evitar el 405
+            connectTimeoutMs: 60000,
+            keepAliveIntervalMs: 30000,
+            printQRInTerminal: false
+        })
 
-        if (qr) {
-            // Guardar QR globalmente para el endpoint /qr
-            global.ultimoQR = qr
-            
-            const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
-            console.log("\n📲 ESCANEA ESTE QR PARA VINCULAR:")
-            console.log(qrLink + "\n")
-        }
+        sock.ev.on("connection.update", async (update) => {
+            const { connection, lastDisconnect, qr } = update
 
-        if (connection === "open") {
-            console.log("✅ WhatsApp conectado correctamente")
-        }
-
-        if (connection === "close") {
-            const reason = lastDisconnect?.error?.output?.statusCode
-            console.log("❌ Conexión cerrada:", reason)
-
-            if (reason !== DisconnectReason.loggedOut) {
-                console.log("🔁 Reintentando conexión en 5 segundos...")
-                setTimeout(() => {
-                    iniciarBot()
-                }, 5000)
-            } else {
-                console.log("⚠️ Sesión cerrada. Borra auth_info para generar nuevo QR.")
+            if (qr) {
+                const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
+                console.log("\n📲 ESCANEA ESTE QR PARA VINCULAR:")
+                console.log(qrLink + "\n")
             }
-        }
-    })
 
-    sock.ev.on("creds.update", saveCreds)
+            if (connection === "open") {
+                console.log("✅ WhatsApp conectado correctamente")
+            }
+
+            if (connection === "close") {
+                const statusCode = lastDisconnect?.error?.output?.statusCode
+                const errorMessage = lastDisconnect?.error?.message
+                
+                console.log("❌ Conexión cerrada - Código:", statusCode, "Mensaje:", errorMessage)
+
+                // Si es error 405 (autenticación) o loggedOut, limpiar sesión
+                if (statusCode === 405 || statusCode === DisconnectReason.loggedOut) {
+                    console.log("⚠️ Error de autenticación detectado, limpiando sesión...")
+                    limpiarSesionCorrupta()
+                    console.log("🔄 Reintentando en 3 segundos con sesión limpia...")
+                    setTimeout(() => iniciarBot(), 3000)
+                } else {
+                    console.log("🔁 Reintentando conexión en 5 segundos...")
+                    setTimeout(() => iniciarBot(), 5000)
+                }
+            }
+        })
+
+        sock.ev.on("creds.update", saveCreds)
+        
+        // Guardar sock en global para debug
+        global.sock = sock
+        
+    } catch (error) {
+        console.error("Error al iniciar bot:", error)
+        setTimeout(() => iniciarBot(), 5000)
+    }
 }
 
-// Iniciar el bot después de configurar el servidor
+// Iniciar con sesión limpia forzada por variable de entorno
+if (process.env.FORCE_CLEAN === "true") {
+    limpiarSesionCorrupta()
+}
+
 iniciarBot()
