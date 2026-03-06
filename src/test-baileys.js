@@ -1,206 +1,78 @@
-import makeWASocket, { useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys'
-import Pino from 'pino'
-import express from 'express'
+import express from "express"
+import makeWASocket, {
+    DisconnectReason,
+    useMultiFileAuthState
+} from "@whiskeysockets/baileys"
 
-const sesiones = {}
+import Pino from "pino"
+import QRCode from "qrcode"
 
-async function iniciarBaileys() {
+const app = express()
 
-    console.log('🚀 Bot de Pie Consalud iniciado...\n')
+// 🔹 Puerto de Railway
+const PORT = process.env.PORT || 8080
 
-    const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
+// 🔹 Ruta para que Railway verifique que el bot está vivo
+app.get("/", (req, res) => {
+    res.send("Bot Online")
+})
+
+app.listen(PORT, () => {
+    console.log(`🌐 Servidor web activo en puerto ${PORT}`)
+})
+
+async function iniciarBot() {
+
+    const { state, saveCreds } = await useMultiFileAuthState("auth_info")
 
     const sock = makeWASocket({
-        auth: state,
-        logger: Pino({ level: 'silent' }),
-        browser: ['Pie Consalud Bot', 'Chrome', '1.0']
+        logger: Pino({ level: "info" }),
+        auth: state
     })
 
-    sock.ev.on('connection.update', (update) => {
+    sock.ev.on("connection.update", async (update) => {
 
         const { connection, lastDisconnect, qr } = update
 
         if (qr) {
-            const link = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
-            console.log('\n📲 ESCANEA ESTE QR:')
-            console.log(link + '\n')
+
+            console.log("\n📲 ESCANEA ESTE QR:\n")
+
+            const qrImage = await QRCode.toString(qr, {
+                type: "terminal",
+                small: true
+            })
+
+            console.log(qrImage)
         }
 
-        if (connection === 'open') {
-            console.log('✅ WhatsApp conectado correctamente')
+        if (connection === "open") {
+            console.log("✅ WhatsApp conectado correctamente")
         }
 
-        if (connection === 'close') {
+        if (connection === "close") {
+
             const reason = lastDisconnect?.error?.output?.statusCode
+
+            console.log("❌ Conexión cerrada:", reason)
+
             if (reason !== DisconnectReason.loggedOut) {
-                console.log('🔁 Reintentando conexión...')
-                iniciarBaileys()
+
+                console.log("🔁 Reconectando en 5 segundos...")
+
+                setTimeout(() => {
+                    iniciarBot()
+                }, 5000)
+
+            } else {
+                console.log("⚠️ Sesión cerrada. Borra auth_info para volver a escanear QR.")
             }
         }
-
     })
 
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-
-        const msg = messages[0]
-        if (!msg.message || msg.key.fromMe) return
-
-        const from = msg.key.remoteJid
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || ''
-        const mensaje = text.toLowerCase().trim()
-
-        let respuesta = ''
-
-        if (mensaje === 'ahumada') {
-            sesiones[from] = { sucursal: 'ahumada' }
-
-            respuesta =
-`✅ Has seleccionado la sucursal *Ahumada*.
-
-Ahora puedes escribir:
-4️⃣ Para recibir los datos de abono
-1️⃣ Para reservar tu hora`
-        }
-
-        else if (mensaje === 'providencia') {
-
-            sesiones[from] = { sucursal: 'providencia' }
-
-            respuesta =
-`✅ Has seleccionado la sucursal *Providencia*.
-
-Ahora puedes escribir:
-4️⃣ Para recibir los datos de abono
-1️⃣ Para reservar tu hora`
-        }
-
-        else if (mensaje === '4' || mensaje.includes('abono')) {
-
-            if (!sesiones[from]?.sucursal) {
-
-                respuesta =
-`Para enviarte los datos de abono primero indícanos la sucursal:
-
-• Ahumada
-• Providencia`
-            }
-
-            else if (sesiones[from].sucursal === 'ahumada') {
-
-                respuesta =
-`💳 *Datos de Abono – Sucursal Ahumada*
-
-Banco Estado
-Cuenta Corriente
-N° 29100119011
-Rut: 77.478.206-0
-Correo: Piesalud.21@gmail.com
-
-Abono: *$10.000*`
-            }
-
-            else {
-
-                respuesta =
-`💳 *Datos de Abono – Sucursal Providencia*
-
-Banco Chile
-Cuenta Vista
-N° 000083725182
-Rut: 77.478.206-0
-Correo: Pieconsalud@gmail.com
-
-Abono: *$10.000*`
-            }
-        }
-
-        else if (mensaje === '1' || mensaje.includes('hora') || mensaje.includes('reservar')) {
-
-            respuesta =
-`📅 *Reserva de Hora*
-
-Ahumada
-https://calendly.com/pieconsalud-santiagocentro/reserva-tu-hora
-
-Providencia
-https://calendly.com/pieconsalud-providencia/reserva-tu-hora`
-        }
-
-        else if (mensaje === '2' || mensaje.includes('precio')) {
-
-            respuesta =
-`🏷️ *Valores de Atención*
-
-Atención Podológica: *$20.000*
-
-Tratamientos especiales pueden variar según evaluación.`
-        }
-
-        else if (mensaje === '3' || mensaje.includes('ubicacion') || mensaje.includes('direccion')) {
-
-            respuesta =
-`📍 *Nuestras sucursales*
-
-🏙️ Ahumada
-Cerca de Metro U. de Chile
-
-🏙️ Providencia
-Cerca de Metro Tobalaba
-
-Escribe el nombre de la sucursal.`
-        }
-
-        else if (mensaje === '5' || mensaje.includes('horario')) {
-
-            respuesta =
-`🕒 *Horario de atención*
-
-Lunes a viernes
-10:00 a 17:00
-
-Sábados
-10:00 a 12:00`
-        }
-
-        else if (mensaje === '6' || mensaje.includes('pago')) {
-
-            respuesta =
-`💰 *Medios de pago*
-
-✔ Transferencia
-✔ Efectivo`
-        }
-
-        else {
-
-            respuesta =
-`👣 *Bienvenido a Pie Consalud*
-
-Indica el número de la opción:
-
-1️⃣ Reservar hora
-2️⃣ Ver precios
-3️⃣ Ubicación
-4️⃣ Datos de abono
-5️⃣ Horarios
-6️⃣ Medios de pago`
-        }
-
-        await sock.sendMessage(from, { text: respuesta })
-
-    })
-
-    sock.ev.on('creds.update', saveCreds)
+    sock.ev.on("creds.update", saveCreds)
 }
 
-const app = express()
-const PORT = process.env.PORT || 3000
+console.log("🚀 Bot de Pie Consalud iniciando...\n")
 
-app.all('/', (req, res) => {
-    res.status(200).send('Bot Pie Consalud Online')
-})
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log('🌐 Servidor web activo en puerto', PORT)
-    iniciarBaileys()
-})
+iniciarBot()
