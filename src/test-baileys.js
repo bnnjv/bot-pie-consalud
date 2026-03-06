@@ -1,12 +1,13 @@
 import express from "express"
 import makeWASocket, {
     DisconnectReason,
-    useMultiFileAuthState,
-    fetchLatestBaileysVersion
+    useMultiFileAuthState
 } from "@whiskeysockets/baileys"
+
 import Pino from "pino"
 import QRCode from "qrcode"
 
+// servidor express para Railway
 const app = express()
 const PORT = process.env.PORT || 8080
 
@@ -15,43 +16,48 @@ app.get("/", (req, res) => {
 })
 
 app.listen(PORT, () => {
-    console.log("🌐 Servidor web activo en puerto " + PORT)
+    console.log(`🌐 Servidor web activo en puerto ${PORT}`)
 })
 
+// iniciar bot
 async function iniciarBot() {
 
     const { state, saveCreds } = await useMultiFileAuthState("auth_info")
 
-    // 🔹 obtiene versión correcta de WhatsApp
-    const { version } = await fetchLatestBaileysVersion()
-
     const sock = makeWASocket({
-        version,
-        auth: state,
         logger: Pino({ level: "silent" }),
-        browser: ["Ubuntu", "Chrome", "20.0.04"]
+        auth: state,
+        browser: ["Bot Consalud", "Chrome", "1.0.0"]
     })
 
     sock.ev.on("connection.update", async (update) => {
 
         const { connection, lastDisconnect, qr } = update
 
+        // QR
         if (qr) {
 
             console.log("\n📲 ESCANEA ESTE QR\n")
 
-            const qrImage = await QRCode.toString(qr, {
+            const qrTerminal = await QRCode.toString(qr, {
                 type: "terminal",
                 small: true
             })
 
-            console.log(qrImage)
+            console.log(qrTerminal)
+
+            const qrLink = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(qr)}`
+
+            console.log("\n🌐 Abre este link para escanear el QR:")
+            console.log(qrLink)
         }
 
+        // conexión abierta
         if (connection === "open") {
-            console.log("✅ WhatsApp conectado")
+            console.log("✅ WhatsApp conectado correctamente")
         }
 
+        // conexión cerrada
         if (connection === "close") {
 
             const reason = lastDisconnect?.error?.output?.statusCode
@@ -67,7 +73,7 @@ async function iniciarBot() {
                 }, 5000)
 
             } else {
-                console.log("⚠️ Sesión cerrada")
+                console.log("⚠️ Sesión cerrada. Borra la carpeta auth_info para volver a escanear QR.")
             }
         }
     })

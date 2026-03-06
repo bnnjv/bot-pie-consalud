@@ -2,12 +2,12 @@
   "name": "base-js-baileys-json",
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": "18.x"
+  },
   "main": "src/test-baileys.js",
   "scripts": {
     "start": "node src/test-baileys.js"
-  },
-  "engines": {
-    "node": "18.x"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc.9",
