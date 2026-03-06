@@ -1,9 +1,11 @@
 import express from "express"
-import { default as makeWASocket, useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
 import pino from "pino"
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from 'url'
+// Importación correcta para Baileys 6.5.0
+import makeWASocket from "@whiskeysockets/baileys"
+import { useMultiFileAuthState, DisconnectReason } from "@whiskeysockets/baileys"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -89,13 +91,15 @@ async function iniciarBot() {
             auth: state,
             logger: pino({ level: 'error' }),
             browser: ["Pie Consalud", "Chrome", "1.0"],
-            printQRInTerminal: false,
+            printQRInTerminal: true, // Para ver QR en terminal
             syncFullHistory: false,
             connectTimeoutMs: 30000,
             keepAliveIntervalMs: 30000,
-            defaultQueryTimeoutMs: 60000,
-            version: [2, 2413, 1] // Versión más estable
+            defaultQueryTimeoutMs: 60000
+            // En 6.5.0 no se especifica versión
         })
+        
+        console.log("✅ Socket creado, esperando QR...")
         
         // Manejar eventos
         sock.ev.on('connection.update', (update) => {
@@ -103,12 +107,13 @@ async function iniciarBot() {
             
             if (qr) {
                 qrCode = qr
-                console.log("\n📲 NUEVO QR GENERADO")
-                console.log("Link para escanear:")
-                console.log(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`)
-                console.log("⏳ QR válido por 20 segundos...\n")
+                console.log("\n" + "=".repeat(50))
+                console.log("📲 NUEVO QR GENERADO - ESCANEA AHORA!")
+                console.log("=".repeat(50))
+                console.log(`Link: https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`)
+                console.log("=".repeat(50) + "\n")
                 
-                // El QR expira, programar limpieza
+                // El QR expira rápido
                 setTimeout(() => {
                     if (connectionStatus !== 'conectado') {
                         console.log("⌛ QR expirado, esperando nuevo...")
@@ -124,10 +129,15 @@ async function iniciarBot() {
             }
             
             if (connection === 'close') {
-                const statusCode = lastDisconnect?.error?.output?.statusCode
-                console.log(`❌ Conexión cerrada (${statusCode || 'desconocido'})`)
+                let reason = 'desconocido'
+                if (lastDisconnect?.error) {
+                    reason = lastDisconnect.error.message || 'desconocido'
+                }
                 
-                if (statusCode === 405) {
+                console.log(`❌ Conexión cerrada: ${reason}`)
+                
+                // Verificar si es error de autenticación
+                if (reason.includes('405') || reason.includes('logged out')) {
                     console.log("⚠️ Error de autenticación, limpiando sesión...")
                     limpiarSesion()
                 }
@@ -135,7 +145,7 @@ async function iniciarBot() {
                 connectionStatus = 'desconectado'
                 reintentos++
                 
-                console.log(`🔄 Reintentando (intento ${reintentos})...`)
+                console.log(`🔄 Reintentando en 5 segundos (intento ${reintentos})...`)
                 setTimeout(iniciarBot, 5000)
             }
         })
@@ -143,8 +153,13 @@ async function iniciarBot() {
         // Guardar credenciales
         sock.ev.on('creds.update', saveCreds)
         
+        // Manejar mensajes (opcional)
+        sock.ev.on('messages.upsert', (m) => {
+            // Aquí puedes procesar mensajes cuando esté conectado
+        })
+        
     } catch (error) {
-        console.error("Error:", error)
+        console.error("Error en iniciarBot:", error)
         connectionStatus = 'desconectado'
         setTimeout(iniciarBot, 5000)
     }
