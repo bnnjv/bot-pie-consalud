@@ -1,4 +1,4 @@
-// IMPORTACIÓN CORRECTA para Baileys 6.5.0
+// IMPORTACIÓN CORRECTA
 import baileys from '@whiskeysockets/baileys'
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = baileys
 
@@ -144,7 +144,7 @@ app.listen(PORT, '0.0.0.0', () => {
 })
 
 // ==============================
-// FUNCIÓN PRINCIPAL DEL BOT - MODO HUMANO
+// FUNCIÓN PRINCIPAL DEL BOT - CORREGIDA
 // ==============================
 
 async function iniciarBaileys() {
@@ -153,6 +153,7 @@ async function iniciarBaileys() {
     try {
         const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
 
+        // ===== SOCKET CORREGIDO según ChatGPT =====
         const sock = makeWASocket({
             auth: state,
             logger: Pino({ level: 'silent' }),
@@ -162,13 +163,14 @@ async function iniciarBaileys() {
             defaultQueryTimeoutMs: 60000,
             emitOwnEvents: false,
             keepAliveIntervalMs: 25000,
-            markOnlineOnConnect: false
+            markOnlineOnConnect: true, // CAMBIADO A TRUE
+            connectTimeoutMs: 60000 // AGREGADO
         })
         
         sockInstance = sock
 
         // ==============================
-        // CONEXIÓN
+        // CONEXIÓN - CORREGIDA
         // ==============================
 
         sock.ev.on('connection.update', (update) => {
@@ -194,22 +196,20 @@ async function iniciarBaileys() {
                 console.log('❌ Conexión cerrada, código:', statusCode)
                 botConectado = false
                 
-                if (statusCode === 515) {
-                    console.log('⚠️ Código 515: WhatsApp pide descanso. Esperando 1 hora...')
-                    setTimeout(iniciarBaileys, 3600000)
-                } else if (statusCode !== DisconnectReason.loggedOut) {
-                    console.log('🔄 Reintentando en 30 segundos...')
-                    setTimeout(iniciarBaileys, 30000)
+                // CORREGIDO: 515 no es ban, es solo reinicio
+                if (statusCode !== DisconnectReason.loggedOut) {
+                    console.log('🔄 Reconectando en 10 segundos...')
+                    setTimeout(iniciarBaileys, 10000)
                 } else {
                     console.log('⚠️ Sesión cerrada. Se generará nuevo QR...')
                     ultimoQR = null
-                    setTimeout(iniciarBaileys, 30000)
+                    setTimeout(iniciarBaileys, 5000)
                 }
             }
         })
 
         // ==============================
-        // MENSAJES - MODO HUMANO ACTIVADO
+        // MENSAJES - MODO HUMANO (IGUAL)
         // ==============================
 
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -238,7 +238,7 @@ async function iniciarBaileys() {
                 const mensaje = text.toLowerCase().trim()
                 let respuesta = ''
 
-                // ===== LÓGICA DE RESPUESTAS =====
+                // ===== LÓGICA DE RESPUESTAS (IGUAL) =====
                 if (mensaje === 'ahumada') {
                     sesiones[from] = { sucursal: 'ahumada' }
                     respuesta = `✅ Has seleccionado la sucursal *Ahumada*.\n\nAhora puedes escribir:\n4️⃣ Para recibir los datos de abono\n1️⃣ Para reservar tu hora`
@@ -277,7 +277,7 @@ async function iniciarBaileys() {
                     respuesta = `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣\n\nPor favor selecciona una opción:\n\n1️⃣ Reservar una hora\n2️⃣ Ver precios\n3️⃣ Ubicación\n4️⃣ Datos para abono\n5️⃣ Horarios\n6️⃣ Medios de pago`
                 }
 
-                // ===== MODO HUMANO =====
+                // ===== MODO HUMANO (IGUAL) =====
                 if (respuesta) {
                     
                     if (!SEGURIDAD.puedeEnviar(from)) {
@@ -314,6 +314,6 @@ async function iniciarBaileys() {
 
     } catch (error) {
         console.error('💥 Error:', error)
-        setTimeout(iniciarBaileys, 30000)
+        setTimeout(iniciarBaileys, 10000)
     }
 }
