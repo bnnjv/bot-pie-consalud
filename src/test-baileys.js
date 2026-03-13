@@ -11,13 +11,12 @@ import { fileURLToPath } from 'url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const sesiones = {}
 const app = express()
-const PORT = process.env.PORT || 8080
+const PORT = process.env.PORT || 3000
 
 // Estado del bot
 let botConectado = false
 let sockInstance = null
 let ultimoQR = null
-let intentosReconexion = 0
 
 // ==============================
 // CONFIGURACIÓN DE SEGURIDAD ANTI-BAN
@@ -71,25 +70,16 @@ app.get('/', (req, res) => {
                     .card { background: white; padding: 20px; margin: 10px 0; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
                     .online { color: green; font-weight: bold; }
                     .offline { color: red; font-weight: bold; }
-                    .espera { color: orange; font-weight: bold; }
                     .qr-img { max-width: 300px; margin: 20px auto; }
-                    button { padding: 10px 20px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; }
-                    button:hover { background: #45a049; }
-                    .proxima-reconexion { background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0; }
                 </style>
             </head>
             <body>
                 <div class="container">
                     <div class="card">
                         <h1>🤖 Bot Pie Consalud - MODO HUMANO</h1>
-                        <p>Estado: 
-                            <span class="${botConectado ? 'online' : 'offline'}">
-                                ${botConectado ? '✅ CONECTADO' : '❌ DESCONECTADO'}
-                            </span>
-                        </p>
+                        <p>Estado: <span class="${botConectado ? 'online' : 'offline'}">${botConectado ? '✅ CONECTADO' : '❌ DESCONECTADO'}</span></p>
                         <p>📊 Sesiones activas: ${Object.keys(sesiones).length}</p>
                         <p>⏱️ Mensajes/minuto: ${SEGURIDAD.mensajesPorMinuto}/${SEGURIDAD.maxPorMinuto}</p>
-                        <p>🔄 Intentos de reconexión: ${intentosReconexion}</p>
                     </div>
                     
                     ${!botConectado && ultimoQR ? `
@@ -98,17 +88,6 @@ app.get('/', (req, res) => {
                             <div class="qr-img">
                                 <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(ultimoQR)}" />
                             </div>
-                            <p>⚠️ El QR expira en 20 segundos. Ten el teléfono listo!</p>
-                        </div>
-                    ` : ''}
-                    
-                    ${!botConectado && !ultimoQR ? `
-                        <div class="card">
-                            <h3>⏳ BOT EN PAUSA</h3>
-                            <p>WhatsApp ha pedido esperar. El bot se reconectará automáticamente.</p>
-                            <div class="proxima-reconexion">
-                                <p id="cuentaRegresiva">Calculando tiempo restante...</p>
-                            </div>
                         </div>
                     ` : ''}
                     
@@ -116,34 +95,8 @@ app.get('/', (req, res) => {
                         <h3>🔧 ACCIONES</h3>
                         <button onclick="location.href='/test'">🔍 Diagnosticar</button>
                         <button onclick="location.href='/limpiar'">🧹 Limpiar Sesión</button>
-                        <button onclick="location.href='/reiniciar'">🔄 Reiniciar Bot</button>
-                        <button onclick="location.href='/forzar-qr'">⚠️ Forzar QR</button>
                     </div>
                 </div>
-                
-                <script>
-                    // Actualizar cuenta regresiva si hay una reconexión programada
-                    if (document.getElementById('cuentaRegresiva')) {
-                        const finEspera = localStorage.getItem('finEspera');
-                        if (finEspera) {
-                            const intervalo = setInterval(() => {
-                                const ahora = new Date().getTime();
-                                const tiempoRestante = parseInt(finEspera) - ahora;
-                                
-                                if (tiempoRestante <= 0) {
-                                    document.getElementById('cuentaRegresiva').innerText = '¡Reconectando ahora!';
-                                    clearInterval(intervalo);
-                                } else {
-                                    const horas = Math.floor(tiempoRestante / (1000 * 60 * 60));
-                                    const minutos = Math.floor((tiempoRestante % (1000 * 60 * 60)) / (1000 * 60));
-                                    const segundos = Math.floor((tiempoRestante % (1000 * 60)) / 1000);
-                                    document.getElementById('cuentaRegresiva').innerText = 
-                                        `Próxima reconexión en: ${horas}h ${minutos}m ${segundos}s`;
-                                }
-                            }, 1000);
-                        }
-                    }
-                </script>
             </body>
         </html>
     `)
@@ -155,7 +108,6 @@ app.get('/test', (req, res) => {
         sesiones_activas: Object.keys(sesiones).length,
         sock_exists: !!sockInstance,
         user: sockInstance?.user || null,
-        intentos_reconexion: intentosReconexion,
         seguridad: {
             mensajesPorMinuto: SEGURIDAD.mensajesPorMinuto,
             maxPorMinuto: SEGURIDAD.maxPorMinuto,
@@ -171,28 +123,9 @@ app.get('/limpiar', (req, res) => {
         if (fs.existsSync(authPath)) {
             fs.rmSync(authPath, { recursive: true, force: true })
         }
-        res.send('🧹 Sesión limpiada. El bot se reiniciará automáticamente.')
-        setTimeout(() => process.exit(0), 2000)
+        res.send('🧹 Sesión limpiada. Reinicia el bot.')
     } catch (error) {
         res.send('❌ Error al limpiar: ' + error.message)
-    }
-})
-
-app.get('/reiniciar', (req, res) => {
-    res.send('🔄 Reiniciando bot...')
-    setTimeout(() => process.exit(0), 2000)
-})
-
-app.get('/forzar-qr', (req, res) => {
-    res.send('⚠️ Forzando limpieza y generación de QR...')
-    try {
-        const authPath = path.join(process.cwd(), 'auth_info')
-        if (fs.existsSync(authPath)) {
-            fs.rmSync(authPath, { recursive: true, force: true })
-        }
-        setTimeout(() => process.exit(0), 2000)
-    } catch (error) {
-        res.send('❌ Error: ' + error.message)
     }
 })
 
@@ -200,59 +133,24 @@ app.get('/qr', (req, res) => {
     if (ultimoQR) {
         res.redirect(`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(ultimoQR)}`)
     } else {
-        res.send('No hay QR disponible. El bot está en pausa o reconectando.')
+        res.send('No hay QR disponible')
     }
 })
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log('🌐 Servidor web activo en puerto', PORT)
-    console.log('📱 Panel de control: /')
-    console.log('🔍 Diagnóstico: /test')
-    console.log('🧹 Limpiar sesión: /limpiar')
-    console.log('🔄 Reiniciar: /reiniciar')
-    console.log('⚠️ Forzar QR: /forzar-qr')
+    console.log('🤖 Bot en MODO HUMANO - Con delays y límites anti-ban')
+    iniciarBaileys()
 })
 
 // ==============================
-// FUNCIÓN DE LIMPIEZA PROFUNDA
-// ==============================
-
-function limpiezaProfunda() {
-    console.log('🧹 Limpieza profunda de sesión...')
-    const carpetas = [
-        './auth_info',
-        './auth_info_baileys',
-        './session',
-        './.auth'
-    ]
-    
-    carpetas.forEach(carpeta => {
-        try {
-            if (fs.existsSync(carpeta)) {
-                fs.rmSync(carpeta, { recursive: true, force: true })
-                console.log(`✅ Eliminada: ${carpeta}`)
-            }
-        } catch (e) {
-            console.log(`⚠️ No se pudo eliminar ${carpeta}:`, e.message)
-        }
-    })
-}
-
-// ==============================
-// FUNCIÓN PRINCIPAL DEL BOT
+// FUNCIÓN PRINCIPAL DEL BOT - MODO HUMANO
 // ==============================
 
 async function iniciarBaileys() {
-    console.log('\n' + '='.repeat(50))
-    console.log('🚀 Bot de Pie Consalud en MODO HUMANO')
-    console.log('='.repeat(50) + '\n')
+    console.log('🚀 Bot de Pie Consalud en MODO HUMANO...\n')
 
     try {
-        // Crear carpeta auth si no existe
-        if (!fs.existsSync('./auth_info')) {
-            fs.mkdirSync('./auth_info', { recursive: true })
-        }
-
         const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
 
         const sock = makeWASocket({
@@ -268,10 +166,9 @@ async function iniciarBaileys() {
         })
         
         sockInstance = sock
-        intentosReconexion = 0
 
         // ==============================
-        // EVENTO DE CONEXIÓN
+        // CONEXIÓN
         // ==============================
 
         sock.ev.on('connection.update', (update) => {
@@ -281,109 +178,52 @@ async function iniciarBaileys() {
                 ultimoQR = qr
                 botConectado = false
                 const link = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qr)}`
-                console.log('\n' + '='.repeat(50))
-                console.log('📲 NUEVO QR GENERADO')
-                console.log('='.repeat(50))
-                console.log('Link:', link)
-                console.log('📱 O visita /qr en tu dominio')
-                console.log('⚠️ QR válido por 20 segundos\n')
+                console.log('\n📲 ESCANEA ESTE QR:')
+                console.log(link + '\n')
             }
 
             if (connection === 'open') {
-                console.log('\n' + '='.repeat(50))
-                console.log('✅ WHATSAPP CONECTADO - MODO HUMANO ACTIVADO')
-                console.log('='.repeat(50))
+                console.log('✅ WhatsApp conectado - MODO HUMANO ACTIVADO')
                 console.log('👤 Usuario:', sock.user?.id)
-                console.log('📊 Sesiones activas:', Object.keys(sesiones).length)
-                console.log('💬 Listo para responder mensajes\n')
                 botConectado = true
                 ultimoQR = null
-                intentosReconexion = 0
             }
 
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode
-                console.log('\n❌ Conexión cerrada, código:', statusCode)
+                console.log('❌ Conexión cerrada, código:', statusCode)
                 botConectado = false
-                intentosReconexion++
                 
-                // Guardar timestamp para la cuenta regresiva
-                const finEspera = Date.now()
-                
-                // Manejar diferentes códigos de error
-                if (statusCode === 401) {
-                    console.log('⚠️ Sesión expirada. Generando nuevo QR en 5 segundos...')
-                    setTimeout(iniciarBaileys, 5000)
-                } 
-                else if (statusCode === 403) {
-                    console.log('⚠️ Número baneado permanentemente. Esperando 24 horas...')
-                    console.log('📌 Usa el número manualmente en el teléfono por 24h')
-                    setTimeout(iniciarBaileys, 86400000) // 24 horas
-                } 
-                else if (statusCode === 405) {
-                    console.log('⚠️ Error de autenticación. Limpiando sesión...')
-                    limpiezaProfunda()
-                    setTimeout(iniciarBaileys, 10000)
-                } 
-                else if (statusCode === 429) {
-                    console.log('⚠️ Demasiadas solicitudes. Esperando 1 hora...')
+                if (statusCode === 515) {
+                    console.log('⚠️ Código 515: WhatsApp pide descanso. Esperando 1 hora...')
                     setTimeout(iniciarBaileys, 3600000)
-                } 
-                else if (statusCode === 515) {
-                    console.log('⚠️ WhatsApp pide descanso. Esperando 2 HORAS...')
-                    console.log('📌 El bot se reconectará automáticamente a las:', 
-                        new Date(Date.now() + 7200000).toLocaleTimeString())
-                    console.log('📌 NO DETENGAS EL BOT. Déjalo corriendo.')
-                    
-                    // Guardar en localStorage del panel web
-                    const finEspera = Date.now() + 7200000
-                    setTimeout(iniciarBaileys, 7200000) // 2 horas exactas
-                } 
-                else if (statusCode === 408) {
-                    console.log('⚠️ Timeout. Reintentando en 1 minuto...')
-                    setTimeout(iniciarBaileys, 60000)
-                }
-                else if (statusCode === 440) {
-                    console.log('⚠️ Conexión perdida. Reintentando en 30 segundos...')
+                } else if (statusCode !== DisconnectReason.loggedOut) {
+                    console.log('🔄 Reintentando en 30 segundos...')
                     setTimeout(iniciarBaileys, 30000)
-                }
-                else if (statusCode === 500) {
-                    console.log('⚠️ Error interno de WhatsApp. Reintentando en 5 minutos...')
-                    setTimeout(iniciarBaileys, 300000)
-                }
-                else if (statusCode !== DisconnectReason.loggedOut) {
-                    const tiempoEspera = Math.min(300000 * intentosReconexion, 3600000)
-                    console.log(`🔄 Reintentando en ${tiempoEspera/60000} minutos... (intento ${intentosReconexion})`)
-                    setTimeout(iniciarBaileys, tiempoEspera)
-                } 
-                else {
-                    console.log('⚠️ Sesión cerrada manualmente. Nuevo QR en 10 segundos...')
+                } else {
+                    console.log('⚠️ Sesión cerrada. Se generará nuevo QR...')
                     ultimoQR = null
-                    setTimeout(iniciarBaileys, 10000)
+                    setTimeout(iniciarBaileys, 30000)
                 }
             }
         })
 
         // ==============================
-        // EVENTO DE MENSAJES
+        // MENSAJES - MODO HUMANO ACTIVADO
         // ==============================
 
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             try {
-                // Solo mensajes nuevos
                 if (type !== 'notify') return
 
                 const msg = messages[0]
                 
-                // Ignorar mensajes propios
                 if (!msg.message || msg.key.fromMe) return
 
                 const from = msg.key.remoteJid
                 
-                // Solo chats privados
                 if (from.includes('@g.us')) return
 
-                // Extraer texto de TODOS los formatos posibles
                 const text = 
                     msg.message?.conversation ||
                     msg.message?.extendedTextMessage?.text ||
@@ -393,8 +233,7 @@ async function iniciarBaileys() {
 
                 if (!text) return
 
-                console.log('\n📨 Mensaje de:', from)
-                console.log('📨 Contenido:', text)
+                console.log('📨 Mensaje de:', from, '->', text)
 
                 const mensaje = text.toLowerCase().trim()
                 let respuesta = ''
@@ -438,66 +277,43 @@ async function iniciarBaileys() {
                     respuesta = `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣\n\nPor favor selecciona una opción:\n\n1️⃣ Reservar una hora\n2️⃣ Ver precios\n3️⃣ Ubicación\n4️⃣ Datos para abono\n5️⃣ Horarios\n6️⃣ Medios de pago`
                 }
 
-                // ===== MODO HUMANO: Envío con delays =====
+                // ===== MODO HUMANO =====
                 if (respuesta) {
                     
                     if (!SEGURIDAD.puedeEnviar(from)) {
-                        console.log('⚠️ Límites de seguridad activados\n')
+                        console.log('⚠️ Límites de seguridad activados, esperando...')
                         return
                     }
                     
-                    // Indicar que está escribiendo
                     await sock.sendPresenceUpdate('composing', from)
                     
-                    // Delay aleatorio (2-5 segundos)
                     const delayHumano = Math.floor(Math.random() * 3000) + 2000
                     console.log(`⏳ Esperando ${delayHumano}ms para parecer humano...`)
                     await new Promise(resolve => setTimeout(resolve, delayHumano))
                     
-                    // Dejar de escribir
                     await sock.sendPresenceUpdate('paused', from)
                     
-                    // Pequeña pausa
                     await new Promise(resolve => setTimeout(resolve, 500))
                     
-                    // Enviar mensaje
                     console.log('📤 Enviando respuesta...')
                     await sock.sendMessage(from, { text: respuesta })
                     
-                    // Registrar envío
                     SEGURIDAD.registrarEnvio(from)
                     
-                    console.log('✅ Respuesta enviada\n')
+                    console.log('✅ Respuesta enviada (modo humano)')
                 }
 
             } catch (error) {
-                console.error('❌ Error procesando mensaje:', error)
+                console.error('❌ Error:', error)
             }
         })
 
-        // Guardar credenciales
         sock.ev.on('creds.update', saveCreds)
         
-        console.log('🎧 Bot escuchando mensajes...\n')
+        console.log('🎧 Bot en MODO HUMANO - Respuestas con delays naturales')
 
     } catch (error) {
-        console.error('💥 Error iniciando bot:', error)
-        intentosReconexion++
-        const tiempoEspera = Math.min(300000 * intentosReconexion, 3600000)
-        console.log(`🔄 Reintentando en ${tiempoEspera/60000} minutos...`)
-        setTimeout(iniciarBaileys, tiempoEspera)
+        console.error('💥 Error:', error)
+        setTimeout(iniciarBaileys, 30000)
     }
 }
-
-// ==============================
-// INICIAR EL BOT
-// ==============================
-
-// Solo descomentar si hay problemas graves:
-// limpiezaProfunda()
-
-console.log('\n' + '='.repeat(50))
-console.log('🤖 INICIANDO BOT PIE CONSALUD')
-console.log('='.repeat(50) + '\n')
-
-iniciarBaileys()
