@@ -144,7 +144,7 @@ app.listen(PORT, '0.0.0.0', () => {
 })
 
 // ==============================
-// FUNCIÓN PRINCIPAL DEL BOT - CORREGIDA
+// FUNCIÓN PRINCIPAL DEL BOT
 // ==============================
 
 async function iniciarBaileys() {
@@ -153,7 +153,6 @@ async function iniciarBaileys() {
     try {
         const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
 
-        // ===== SOCKET CORREGIDO según ChatGPT =====
         const sock = makeWASocket({
             auth: state,
             logger: Pino({ level: 'silent' }),
@@ -163,14 +162,14 @@ async function iniciarBaileys() {
             defaultQueryTimeoutMs: 60000,
             emitOwnEvents: false,
             keepAliveIntervalMs: 25000,
-            markOnlineOnConnect: true, // CAMBIADO A TRUE
-            connectTimeoutMs: 60000 // AGREGADO
+            markOnlineOnConnect: true,
+            connectTimeoutMs: 60000
         })
         
         sockInstance = sock
 
         // ==============================
-        // CONEXIÓN - CORREGIDA
+        // CONEXIÓN
         // ==============================
 
         sock.ev.on('connection.update', (update) => {
@@ -196,7 +195,6 @@ async function iniciarBaileys() {
                 console.log('❌ Conexión cerrada, código:', statusCode)
                 botConectado = false
                 
-                // CORREGIDO: 515 no es ban, es solo reinicio
                 if (statusCode !== DisconnectReason.loggedOut) {
                     console.log('🔄 Reconectando en 10 segundos...')
                     setTimeout(iniciarBaileys, 10000)
@@ -209,21 +207,31 @@ async function iniciarBaileys() {
         })
 
         // ==============================
-        // MENSAJES - MODO HUMANO (IGUAL)
+        // MENSAJES - CON FILTROS DE GPT
         // ==============================
 
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             try {
+                // Solo mensajes nuevos
                 if (type !== 'notify') return
 
                 const msg = messages[0]
                 
+                // FILTRO 1: Ignorar mensajes propios o vacíos
                 if (!msg.message || msg.key.fromMe) return
+                
+                // FILTRO 2: Ignorar mensajes de estado (broadcast)
+                if (msg.key.remoteJid === 'status@broadcast') return
 
                 const from = msg.key.remoteJid
                 
-                if (from.includes('@g.us')) return
+                // FILTRO 3: Solo chats privados de WhatsApp (no grupos, no broadcasts)
+                if (!from.endsWith('@s.whatsapp.net')) {
+                    console.log('⏭️ Ignorando mensaje no privado:', from)
+                    return
+                }
 
+                // Extraer texto de TODOS los posibles formatos
                 const text = 
                     msg.message?.conversation ||
                     msg.message?.extendedTextMessage?.text ||
@@ -238,7 +246,7 @@ async function iniciarBaileys() {
                 const mensaje = text.toLowerCase().trim()
                 let respuesta = ''
 
-                // ===== LÓGICA DE RESPUESTAS (IGUAL) =====
+                // ===== LÓGICA DE RESPUESTAS =====
                 if (mensaje === 'ahumada') {
                     sesiones[from] = { sucursal: 'ahumada' }
                     respuesta = `✅ Has seleccionado la sucursal *Ahumada*.\n\nAhora puedes escribir:\n4️⃣ Para recibir los datos de abono\n1️⃣ Para reservar tu hora`
@@ -277,7 +285,7 @@ async function iniciarBaileys() {
                     respuesta = `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣\n\nPor favor selecciona una opción:\n\n1️⃣ Reservar una hora\n2️⃣ Ver precios\n3️⃣ Ubicación\n4️⃣ Datos para abono\n5️⃣ Horarios\n6️⃣ Medios de pago`
                 }
 
-                // ===== MODO HUMANO (IGUAL) =====
+                // ===== MODO HUMANO =====
                 if (respuesta) {
                     
                     if (!SEGURIDAD.puedeEnviar(from)) {
@@ -295,7 +303,7 @@ async function iniciarBaileys() {
                     
                     await new Promise(resolve => setTimeout(resolve, 500))
                     
-                    console.log('📤 Enviando respuesta...')
+                    console.log('📤 Enviando respuesta a:', from)
                     await sock.sendMessage(from, { text: respuesta })
                     
                     SEGURIDAD.registrarEnvio(from)
@@ -310,7 +318,7 @@ async function iniciarBaileys() {
 
         sock.ev.on('creds.update', saveCreds)
         
-        console.log('🎧 Bot en MODO HUMANO - Respuestas con delays naturales')
+        console.log('🎧 Bot en MODO HUMANO - Solo responde a chats reales')
 
     } catch (error) {
         console.error('💥 Error:', error)
