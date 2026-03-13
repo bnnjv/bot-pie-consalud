@@ -13,10 +13,78 @@ const sesiones = {}
 const app = express()
 const PORT = process.env.PORT || 3000
 
+// ==============================
+// MEJORA 3: MEMORIA DE CLIENTES
+// ==============================
+const clientesDB = new Map() // Guarda historial de conversaciones
+try {
+    if (fs.existsSync('./clientes.json')) {
+        const data = fs.readFileSync('./clientes.json', 'utf8')
+        const clientes = JSON.parse(data)
+        Object.keys(clientes).forEach(key => clientesDB.set(key, clientes[key]))
+        console.log('📚 Clientes cargados:', clientesDB.size)
+    }
+} catch (e) {
+    console.log('No hay clientes previos')
+}
+
+// Guardar clientes cada 5 minutos
+setInterval(() => {
+    try {
+        const clientesObj = Object.fromEntries(clientesDB)
+        fs.writeFileSync('./clientes.json', JSON.stringify(clientesObj, null, 2))
+        console.log('💾 Clientes guardados:', clientesDB.size)
+    } catch (e) {
+        console.error('Error guardando clientes:', e)
+    }
+}, 300000)
+
 // Estado del bot
 let botConectado = false
 let sockInstance = null
 let ultimoQR = null
+
+// ==============================
+// MEJORA 2: COLA DE MENSAJES (ANTI-BAN REAL)
+// ==============================
+const colaMensajes = []
+let procesandoCola = false
+
+async function procesarCola() {
+    if (procesandoCola || colaMensajes.length === 0) return
+    
+    procesandoCola = true
+    
+    while (colaMensajes.length > 0) {
+        const { from, respuesta, sock } = colaMensajes.shift()
+        
+        try {
+            // Verificar que el socket sigue vivo
+            if (!sock || !sock.user) {
+                console.log('⚠️ Socket no disponible, reintentando después...')
+                colaMensajes.unshift({ from, respuesta, sock })
+                await new Promise(resolve => setTimeout(resolve, 5000))
+                continue
+            }
+            
+            await sock.sendPresenceUpdate('composing', from)
+            await new Promise(resolve => setTimeout(resolve, 2000 + Math.random() * 2000))
+            await sock.sendPresenceUpdate('paused', from)
+            await new Promise(resolve => setTimeout(resolve, 500))
+            
+            await sock.sendMessage(from, { text: respuesta })
+            console.log('✅ Mensaje enviado desde cola a:', from)
+            
+            // Delay entre mensajes
+            await new Promise(resolve => setTimeout(resolve, 3000))
+            
+        } catch (error) {
+            console.error('❌ Error en cola:', error)
+        }
+    }
+    
+    procesandoCola = false
+}
 
 // ==============================
 // CONFIGURACIÓN DE SEGURIDAD ANTI-BAN
@@ -25,7 +93,7 @@ let ultimoQR = null
 const SEGURIDAD = {
     mensajesPorMinuto: 0,
     ultimoReset: Date.now(),
-    maxPorMinuto: 8,
+    maxPorMinuto: 6, // Reducido a 6 para más seguridad
     conversaciones: new Map(),
     
     puedeEnviar: function(from) {
@@ -40,7 +108,7 @@ const SEGURIDAD = {
         }
         
         const ultimoMensaje = this.conversaciones.get(from) || 0
-        if (Date.now() - ultimoMensaje < 10000) {
+        if (Date.now() - ultimoMensaje < 15000) { // Aumentado a 15 segundos
             console.log('⚠️ Enviando mensajes muy rápido al mismo usuario')
             return false
         }
@@ -76,10 +144,12 @@ app.get('/', (req, res) => {
             <body>
                 <div class="container">
                     <div class="card">
-                        <h1>🤖 Bot Pie Consalud - MODO HUMANO</h1>
+                        <h1>🤖 Bot Pie Consalud - VERSIÓN 10/10</h1>
                         <p>Estado: <span class="${botConectado ? 'online' : 'offline'}">${botConectado ? '✅ CONECTADO' : '❌ DESCONECTADO'}</span></p>
                         <p>📊 Sesiones activas: ${Object.keys(sesiones).length}</p>
+                        <p>👥 Clientes únicos: ${clientesDB.size}</p>
                         <p>⏱️ Mensajes/minuto: ${SEGURIDAD.mensajesPorMinuto}/${SEGURIDAD.maxPorMinuto}</p>
+                        <p>📨 Cola mensajes: ${colaMensajes.length}</p>
                     </div>
                     
                     ${!botConectado && ultimoQR ? `
@@ -95,6 +165,7 @@ app.get('/', (req, res) => {
                         <h3>🔧 ACCIONES</h3>
                         <button onclick="location.href='/test'">🔍 Diagnosticar</button>
                         <button onclick="location.href='/limpiar'">🧹 Limpiar Sesión</button>
+                        <button onclick="location.href='/clientes'">👥 Ver Clientes</button>
                     </div>
                 </div>
             </body>
@@ -102,12 +173,25 @@ app.get('/', (req, res) => {
     `)
 })
 
+app.get('/clientes', (req, res) => {
+    const clientesLista = Array.from(clientesDB.entries()).map(([numero, data]) => ({
+        numero,
+        primeraVez: new Date(data.primerContacto).toLocaleString(),
+        ultimoMensaje: new Date(data.ultimoContacto).toLocaleString(),
+        totalMensajes: data.totalMensajes || 1
+    }))
+    
+    res.json(clientesLista)
+})
+
 app.get('/test', (req, res) => {
     res.json({
         estado: botConectado ? 'conectado' : 'desconectado',
         sesiones_activas: Object.keys(sesiones).length,
+        clientes_unicos: clientesDB.size,
         sock_exists: !!sockInstance,
         user: sockInstance?.user || null,
+        cola_mensajes: colaMensajes.length,
         seguridad: {
             mensajesPorMinuto: SEGURIDAD.mensajesPorMinuto,
             maxPorMinuto: SEGURIDAD.maxPorMinuto,
@@ -139,7 +223,7 @@ app.get('/qr', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log('🌐 Servidor web activo en puerto', PORT)
-    console.log('🤖 Bot en MODO HUMANO - Con delays y límites anti-ban')
+    console.log('🤖 Bot VERSIÓN 10/10 - Con cola de mensajes y memoria')
     iniciarBaileys()
 })
 
@@ -148,7 +232,7 @@ app.listen(PORT, '0.0.0.0', () => {
 // ==============================
 
 async function iniciarBaileys() {
-    console.log('🚀 Bot de Pie Consalud en MODO HUMANO...\n')
+    console.log('🚀 Bot de Pie Consalud VERSIÓN 10/10...\n')
 
     try {
         const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
@@ -163,7 +247,11 @@ async function iniciarBaileys() {
             emitOwnEvents: false,
             keepAliveIntervalMs: 25000,
             markOnlineOnConnect: true,
-            connectTimeoutMs: 60000
+            connectTimeoutMs: 60000,
+            
+            // MEJORA 1: Reconexión inteligente
+            retryRequestDelayMs: 5000,
+            maxRetries: 5
         })
         
         sockInstance = sock
@@ -184,7 +272,7 @@ async function iniciarBaileys() {
             }
 
             if (connection === 'open') {
-                console.log('✅ WhatsApp conectado - MODO HUMANO ACTIVADO')
+                console.log('✅ WhatsApp conectado - VERSIÓN 10/10')
                 console.log('👤 Usuario:', sock.user?.id)
                 botConectado = true
                 ultimoQR = null
@@ -192,12 +280,15 @@ async function iniciarBaileys() {
 
             if (connection === 'close') {
                 const statusCode = lastDisconnect?.error?.output?.statusCode
-                console.log('❌ Conexión cerrada, código:', statusCode)
+                const errorMsg = lastDisconnect?.error?.message || ''
+                console.log('❌ Conexión cerrada, código:', statusCode, 'Error:', errorMsg)
                 botConectado = false
                 
+                // MEJORA 1: Reconexión inteligente con backoff exponencial
                 if (statusCode !== DisconnectReason.loggedOut) {
-                    console.log('🔄 Reconectando en 10 segundos...')
-                    setTimeout(iniciarBaileys, 10000)
+                    const tiempoEspera = errorMsg.includes('rate') ? 60000 : 10000
+                    console.log(`🔄 Reconectando en ${tiempoEspera/1000} segundos...`)
+                    setTimeout(iniciarBaileys, tiempoEspera)
                 } else {
                     console.log('⚠️ Sesión cerrada. Se generará nuevo QR...')
                     ultimoQR = null
@@ -207,52 +298,74 @@ async function iniciarBaileys() {
         })
 
         // ==============================
-        // MENSAJES - CON FILTROS DE GPT
+        // MENSAJES - VERSIÓN 10/10
         // ==============================
 
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             try {
-                // Solo mensajes nuevos
+                // MEJORA 2: Verificar que el socket sigue vivo
+                if (!sock || !sock.user) {
+                    console.log('⚠️ Socket no disponible, ignorando mensaje')
+                    return
+                }
+                
                 if (type !== 'notify') return
 
                 const msg = messages[0]
                 
-                // FILTRO 1: Ignorar mensajes propios o vacíos
                 if (!msg.message || msg.key.fromMe) return
-                
-                // FILTRO 2: Ignorar mensajes de estado (broadcast)
                 if (msg.key.remoteJid === 'status@broadcast') return
 
-                const from = msg.key.remoteJid
+                // Usar participant para número real
+                const from = msg.key.participant || msg.key.remoteJid
                 
-                // FILTRO 3: Solo chats privados de WhatsApp (no grupos, no broadcasts)
-                if (!from.endsWith('@s.whatsapp.net')) {
-                    console.log('⏭️ Ignorando mensaje no privado:', from)
-                    return
+                if (from.includes('@g.us')) return
+
+                // MEJORA 3: Guardar cliente en memoria
+                if (!clientesDB.has(from)) {
+                    clientesDB.set(from, {
+                        primerContacto: Date.now(),
+                        ultimoContacto: Date.now(),
+                        totalMensajes: 1,
+                        sucursal: null
+                    })
+                    console.log('👤 Nuevo cliente registrado:', from)
+                } else {
+                    const cliente = clientesDB.get(from)
+                    cliente.ultimoContacto = Date.now()
+                    cliente.totalMensajes++
+                    clientesDB.set(from, cliente)
                 }
 
-                // Extraer texto de TODOS los posibles formatos
-                const text = 
+                // MEJORA 1: Extraer texto de MÁS tipos de mensaje
+                const text =
                     msg.message?.conversation ||
                     msg.message?.extendedTextMessage?.text ||
+                    msg.message?.ephemeralMessage?.message?.conversation ||
                     msg.message?.ephemeralMessage?.message?.extendedTextMessage?.text ||
                     msg.message?.imageMessage?.caption ||
+                    msg.message?.videoMessage?.caption ||
                     ''
 
-                if (!text) return
+                if (!text) {
+                    console.log('⏭️ Mensaje sin texto de:', from)
+                    return
+                }
 
                 console.log('📨 Mensaje de:', from, '->', text)
 
                 const mensaje = text.toLowerCase().trim()
                 let respuesta = ''
 
-                // ===== LÓGICA DE RESPUESTAS =====
+                // ===== LÓGICA DE RESPUESTAS (con memoria de sucursal) =====
+                const cliente = clientesDB.get(from)
+                
                 if (mensaje === 'ahumada') {
-                    sesiones[from] = { sucursal: 'ahumada' }
+                    cliente.sucursal = 'ahumada'
                     respuesta = `✅ Has seleccionado la sucursal *Ahumada*.\n\nAhora puedes escribir:\n4️⃣ Para recibir los datos de abono\n1️⃣ Para reservar tu hora`
                 }
                 else if (mensaje === 'providencia') {
-                    sesiones[from] = { sucursal: 'providencia' }
+                    cliente.sucursal = 'providencia'
                     respuesta = `✅ Has seleccionado la sucursal *Providencia*.\n\nAhora puedes escribir:\n4️⃣ Para recibir los datos de abono\n1️⃣ Para reservar tu hora`
                 }
                 else if (mensaje === '1' || mensaje.includes('hora') || mensaje.includes('reservar')) {
@@ -265,10 +378,10 @@ async function iniciarBaileys() {
                     respuesta = `📍 *Nuestras Sucursales*\n\n🏙️ Ahumada  \nCerca de Metro U. de Chile / Plaza de Armas\n\n🏙️ Providencia  \nCerca de Metro Tobalaba\n\nEscribe el nombre de la sucursal para continuar.`
                 }
                 else if (mensaje === '4' || mensaje.includes('abono')) {
-                    if (!sesiones[from]?.sucursal) {
+                    if (!cliente?.sucursal) {
                         respuesta = `Para enviarte los datos de abono, primero indícanos la sucursal:\n\n• Ahumada\n• Providencia`
                     }
-                    else if (sesiones[from].sucursal === 'ahumada') {
+                    else if (cliente.sucursal === 'ahumada') {
                         respuesta = `💳 *Datos de Abono – Sucursal Ahumada*\n\nBanco Estado\nCuenta Corriente\nN° 29100119011\nRut: 77.478.206-0\nCorreo: Piesalud.21@gmail.com\n\nAbono: *$10.000*\nSe descuenta del total de la atención.`
                     }
                     else {
@@ -285,30 +398,21 @@ async function iniciarBaileys() {
                     respuesta = `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣\n\nPor favor selecciona una opción:\n\n1️⃣ Reservar una hora\n2️⃣ Ver precios\n3️⃣ Ubicación\n4️⃣ Datos para abono\n5️⃣ Horarios\n6️⃣ Medios de pago`
                 }
 
-                // ===== MODO HUMANO =====
+                // ===== MODO HUMANO CON COLA DE MENSAJES =====
                 if (respuesta) {
                     
                     if (!SEGURIDAD.puedeEnviar(from)) {
-                        console.log('⚠️ Límites de seguridad activados, esperando...')
+                        console.log('⚠️ Límites de seguridad activados, añadiendo a cola...')
+                        colaMensajes.push({ from, respuesta, sock })
+                        procesarCola()
                         return
                     }
                     
-                    await sock.sendPresenceUpdate('composing', from)
+                    // Enviar directamente si hay capacidad
+                    colaMensajes.push({ from, respuesta, sock })
+                    procesarCola()
                     
-                    const delayHumano = Math.floor(Math.random() * 3000) + 2000
-                    console.log(`⏳ Esperando ${delayHumano}ms para parecer humano...`)
-                    await new Promise(resolve => setTimeout(resolve, delayHumano))
-                    
-                    await sock.sendPresenceUpdate('paused', from)
-                    
-                    await new Promise(resolve => setTimeout(resolve, 500))
-                    
-                    console.log('📤 Enviando respuesta a:', from)
-                    await sock.sendMessage(from, { text: respuesta })
-                    
-                    SEGURIDAD.registrarEnvio(from)
-                    
-                    console.log('✅ Respuesta enviada (modo humano)')
+                    console.log('📤 Mensaje añadido a cola para:', from)
                 }
 
             } catch (error) {
@@ -318,7 +422,7 @@ async function iniciarBaileys() {
 
         sock.ev.on('creds.update', saveCreds)
         
-        console.log('🎧 Bot en MODO HUMANO - Solo responde a chats reales')
+        console.log('🎧 Bot VERSIÓN 10/10 - Con cola, memoria y mejor extracción de texto')
 
     } catch (error) {
         console.error('💥 Error:', error)
