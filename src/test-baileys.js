@@ -14,9 +14,9 @@ const app = express()
 const PORT = process.env.PORT || 3000
 
 // ==============================
-// MEJORA 3: MEMORIA DE CLIENTES
+// MEMORIA DE CLIENTES
 // ==============================
-const clientesDB = new Map() // Guarda historial de conversaciones
+const clientesDB = new Map()
 try {
     if (fs.existsSync('./clientes.json')) {
         const data = fs.readFileSync('./clientes.json', 'utf8')
@@ -45,7 +45,7 @@ let sockInstance = null
 let ultimoQR = null
 
 // ==============================
-// MEJORA 2: COLA DE MENSAJES (ANTI-BAN REAL)
+// COLA DE MENSAJES
 // ==============================
 const colaMensajes = []
 let procesandoCola = false
@@ -59,7 +59,6 @@ async function procesarCola() {
         const { from, respuesta, sock } = colaMensajes.shift()
         
         try {
-            // Verificar que el socket sigue vivo
             if (!sock || !sock.user) {
                 console.log('⚠️ Socket no disponible, reintentando después...')
                 colaMensajes.unshift({ from, respuesta, sock })
@@ -75,7 +74,6 @@ async function procesarCola() {
             await sock.sendMessage(from, { text: respuesta })
             console.log('✅ Mensaje enviado desde cola a:', from)
             
-            // Delay entre mensajes
             await new Promise(resolve => setTimeout(resolve, 3000))
             
         } catch (error) {
@@ -87,13 +85,13 @@ async function procesarCola() {
 }
 
 // ==============================
-// CONFIGURACIÓN DE SEGURIDAD ANTI-BAN
+// CONFIGURACIÓN DE SEGURIDAD
 // ==============================
 
 const SEGURIDAD = {
     mensajesPorMinuto: 0,
     ultimoReset: Date.now(),
-    maxPorMinuto: 6, // Reducido a 6 para más seguridad
+    maxPorMinuto: 6,
     conversaciones: new Map(),
     
     puedeEnviar: function(from) {
@@ -108,7 +106,7 @@ const SEGURIDAD = {
         }
         
         const ultimoMensaje = this.conversaciones.get(from) || 0
-        if (Date.now() - ultimoMensaje < 15000) { // Aumentado a 15 segundos
+        if (Date.now() - ultimoMensaje < 15000) {
             console.log('⚠️ Enviando mensajes muy rápido al mismo usuario')
             return false
         }
@@ -144,7 +142,7 @@ app.get('/', (req, res) => {
             <body>
                 <div class="container">
                     <div class="card">
-                        <h1>🤖 Bot Pie Consalud - VERSIÓN 10/10</h1>
+                        <h1>🤖 Bot Pie Consalud - VERSIÓN DEFINITIVA</h1>
                         <p>Estado: <span class="${botConectado ? 'online' : 'offline'}">${botConectado ? '✅ CONECTADO' : '❌ DESCONECTADO'}</span></p>
                         <p>📊 Sesiones activas: ${Object.keys(sesiones).length}</p>
                         <p>👥 Clientes únicos: ${clientesDB.size}</p>
@@ -165,23 +163,11 @@ app.get('/', (req, res) => {
                         <h3>🔧 ACCIONES</h3>
                         <button onclick="location.href='/test'">🔍 Diagnosticar</button>
                         <button onclick="location.href='/limpiar'">🧹 Limpiar Sesión</button>
-                        <button onclick="location.href='/clientes'">👥 Ver Clientes</button>
                     </div>
                 </div>
             </body>
         </html>
     `)
-})
-
-app.get('/clientes', (req, res) => {
-    const clientesLista = Array.from(clientesDB.entries()).map(([numero, data]) => ({
-        numero,
-        primeraVez: new Date(data.primerContacto).toLocaleString(),
-        ultimoMensaje: new Date(data.ultimoContacto).toLocaleString(),
-        totalMensajes: data.totalMensajes || 1
-    }))
-    
-    res.json(clientesLista)
 })
 
 app.get('/test', (req, res) => {
@@ -223,16 +209,16 @@ app.get('/qr', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log('🌐 Servidor web activo en puerto', PORT)
-    console.log('🤖 Bot VERSIÓN 10/10 - Con cola de mensajes y memoria')
+    console.log('🤖 VERSIÓN DEFINITIVA - Con corrección de IDs')
     iniciarBaileys()
 })
 
 // ==============================
-// FUNCIÓN PRINCIPAL DEL BOT
+// FUNCIÓN PRINCIPAL
 // ==============================
 
 async function iniciarBaileys() {
-    console.log('🚀 Bot de Pie Consalud VERSIÓN 10/10...\n')
+    console.log('🚀 Bot Versión Definitiva...\n')
 
     try {
         const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
@@ -248,10 +234,10 @@ async function iniciarBaileys() {
             keepAliveIntervalMs: 25000,
             markOnlineOnConnect: true,
             connectTimeoutMs: 60000,
-            
-            // MEJORA 1: Reconexión inteligente
             retryRequestDelayMs: 5000,
-            maxRetries: 5
+            maxRetries: 5,
+            // IMPORTANTE: Forzar modo no-multi-device
+            version: [2, 2413, 1]
         })
         
         sockInstance = sock
@@ -272,7 +258,7 @@ async function iniciarBaileys() {
             }
 
             if (connection === 'open') {
-                console.log('✅ WhatsApp conectado - VERSIÓN 10/10')
+                console.log('✅ WhatsApp conectado - VERSIÓN DEFINITIVA')
                 console.log('👤 Usuario:', sock.user?.id)
                 botConectado = true
                 ultimoQR = null
@@ -284,7 +270,6 @@ async function iniciarBaileys() {
                 console.log('❌ Conexión cerrada, código:', statusCode, 'Error:', errorMsg)
                 botConectado = false
                 
-                // MEJORA 1: Reconexión inteligente con backoff exponencial
                 if (statusCode !== DisconnectReason.loggedOut) {
                     const tiempoEspera = errorMsg.includes('rate') ? 60000 : 10000
                     console.log(`🔄 Reconectando en ${tiempoEspera/1000} segundos...`)
@@ -298,46 +283,46 @@ async function iniciarBaileys() {
         })
 
         // ==============================
-        // MENSAJES - VERSIÓN 10/10
+        // MENSAJES - VERSIÓN CORREGIDA
         // ==============================
 
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             try {
-                // MEJORA 2: Verificar que el socket sigue vivo
-                if (!sock || !sock.user) {
-                    console.log('⚠️ Socket no disponible, ignorando mensaje')
-                    return
-                }
-                
+                if (!sock || !sock.user) return
                 if (type !== 'notify') return
 
                 const msg = messages[0]
                 
+                // Ignorar mensajes propios
                 if (!msg.message || msg.key.fromMe) return
                 if (msg.key.remoteJid === 'status@broadcast') return
 
-                // Usar participant para número real
-                const from = msg.key.participant || msg.key.remoteJid
+                // ===== CORRECCIÓN DEFINITIVA DEL ID =====
+                // En WhatsApp, el remoteJid YA ES el número en chats 1-a-1
+                // El participant SOLO se usa en grupos
+                let from = msg.key.remoteJid
                 
-                if (from.includes('@g.us')) return
-
-                // MEJORA 3: Guardar cliente en memoria
-                if (!clientesDB.has(from)) {
-                    clientesDB.set(from, {
-                        primerContacto: Date.now(),
-                        ultimoContacto: Date.now(),
-                        totalMensajes: 1,
-                        sucursal: null
-                    })
-                    console.log('👤 Nuevo cliente registrado:', from)
-                } else {
-                    const cliente = clientesDB.get(from)
-                    cliente.ultimoContacto = Date.now()
-                    cliente.totalMensajes++
-                    clientesDB.set(from, cliente)
+                // Log para debug
+                console.log('\n📨 Mensaje recibido:')
+                console.log('   remoteJid:', msg.key.remoteJid)
+                console.log('   participant:', msg.key.participant)
+                console.log('   fromMe:', msg.key.fromMe)
+                
+                // Si es grupo, ignoramos (el bot solo responde DMs)
+                if (from.includes('@g.us')) {
+                    console.log('   ⏭️ Ignorando mensaje de grupo')
+                    return
                 }
+                
+                // Verificar que sea un número válido (termina en @s.whatsapp.net)
+                if (!from.endsWith('@s.whatsapp.net')) {
+                    console.log('   ⏭️ Ignorando ID no estándar:', from)
+                    return
+                }
+                
+                console.log('   ✅ From final:', from)
 
-                // MEJORA 1: Extraer texto de MÁS tipos de mensaje
+                // Extraer texto
                 const text =
                     msg.message?.conversation ||
                     msg.message?.extendedTextMessage?.text ||
@@ -348,24 +333,22 @@ async function iniciarBaileys() {
                     ''
 
                 if (!text) {
-                    console.log('⏭️ Mensaje sin texto de:', from)
+                    console.log('   ⏭️ Mensaje sin texto')
                     return
                 }
 
-                console.log('📨 Mensaje de:', from, '->', text)
+                console.log('   📝 Texto:', text)
 
                 const mensaje = text.toLowerCase().trim()
                 let respuesta = ''
 
-                // ===== LÓGICA DE RESPUESTAS (con memoria de sucursal) =====
-                const cliente = clientesDB.get(from)
-                
+                // ===== LÓGICA DE RESPUESTAS =====
                 if (mensaje === 'ahumada') {
-                    cliente.sucursal = 'ahumada'
+                    sesiones[from] = { sucursal: 'ahumada' }
                     respuesta = `✅ Has seleccionado la sucursal *Ahumada*.\n\nAhora puedes escribir:\n4️⃣ Para recibir los datos de abono\n1️⃣ Para reservar tu hora`
                 }
                 else if (mensaje === 'providencia') {
-                    cliente.sucursal = 'providencia'
+                    sesiones[from] = { sucursal: 'providencia' }
                     respuesta = `✅ Has seleccionado la sucursal *Providencia*.\n\nAhora puedes escribir:\n4️⃣ Para recibir los datos de abono\n1️⃣ Para reservar tu hora`
                 }
                 else if (mensaje === '1' || mensaje.includes('hora') || mensaje.includes('reservar')) {
@@ -378,10 +361,10 @@ async function iniciarBaileys() {
                     respuesta = `📍 *Nuestras Sucursales*\n\n🏙️ Ahumada  \nCerca de Metro U. de Chile / Plaza de Armas\n\n🏙️ Providencia  \nCerca de Metro Tobalaba\n\nEscribe el nombre de la sucursal para continuar.`
                 }
                 else if (mensaje === '4' || mensaje.includes('abono')) {
-                    if (!cliente?.sucursal) {
+                    if (!sesiones[from]?.sucursal) {
                         respuesta = `Para enviarte los datos de abono, primero indícanos la sucursal:\n\n• Ahumada\n• Providencia`
                     }
-                    else if (cliente.sucursal === 'ahumada') {
+                    else if (sesiones[from].sucursal === 'ahumada') {
                         respuesta = `💳 *Datos de Abono – Sucursal Ahumada*\n\nBanco Estado\nCuenta Corriente\nN° 29100119011\nRut: 77.478.206-0\nCorreo: Piesalud.21@gmail.com\n\nAbono: *$10.000*\nSe descuenta del total de la atención.`
                     }
                     else {
@@ -398,21 +381,31 @@ async function iniciarBaileys() {
                     respuesta = `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣\n\nPor favor selecciona una opción:\n\n1️⃣ Reservar una hora\n2️⃣ Ver precios\n3️⃣ Ubicación\n4️⃣ Datos para abono\n5️⃣ Horarios\n6️⃣ Medios de pago`
                 }
 
-                // ===== MODO HUMANO CON COLA DE MENSAJES =====
+                // ===== ENVÍO =====
                 if (respuesta) {
+                    console.log('   📤 Respondiendo a:', from)
                     
-                    if (!SEGURIDAD.puedeEnviar(from)) {
-                        console.log('⚠️ Límites de seguridad activados, añadiendo a cola...')
-                        colaMensajes.push({ from, respuesta, sock })
-                        procesarCola()
-                        return
+                    // Guardar cliente
+                    if (!clientesDB.has(from)) {
+                        clientesDB.set(from, {
+                            primerContacto: Date.now(),
+                            ultimoContacto: Date.now(),
+                            totalMensajes: 1
+                        })
+                    } else {
+                        const c = clientesDB.get(from)
+                        c.ultimoContacto = Date.now()
+                        c.totalMensajes++
                     }
                     
-                    // Enviar directamente si hay capacidad
-                    colaMensajes.push({ from, respuesta, sock })
-                    procesarCola()
+                    // Enviar
+                    await sock.sendPresenceUpdate('composing', from)
+                    await new Promise(resolve => setTimeout(resolve, 2000))
+                    await sock.sendPresenceUpdate('paused', from)
+                    await sock.sendMessage(from, { text: respuesta })
                     
-                    console.log('📤 Mensaje añadido a cola para:', from)
+                    console.log('   ✅ Respuesta enviada a:', from)
+                    console.log('')
                 }
 
             } catch (error) {
@@ -422,7 +415,7 @@ async function iniciarBaileys() {
 
         sock.ev.on('creds.update', saveCreds)
         
-        console.log('🎧 Bot VERSIÓN 10/10 - Con cola, memoria y mejor extracción de texto')
+        console.log('🎧 Bot listo - Solo responde a números reales')
 
     } catch (error) {
         console.error('💥 Error:', error)
