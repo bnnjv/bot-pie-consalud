@@ -14,9 +14,6 @@ let sockInstance = null
 let ultimoQR = null
 const sesiones = {}
 
-// ==============================
-// SERVIDOR WEB
-// ==============================
 app.get('/', (req, res) => {
     res.send(`
         <html>
@@ -48,9 +45,6 @@ app.listen(PORT, '0.0.0.0', () => {
     iniciarBot()
 })
 
-// ==============================
-// BOT PRINCIPAL
-// ==============================
 async function iniciarBot() {
     console.log('🚀 Iniciando bot...\n')
 
@@ -66,7 +60,6 @@ async function iniciarBot() {
 
         sockInstance = sock
 
-        // CONEXIÓN
         sock.ev.on('connection.update', (update) => {
             const { connection, lastDisconnect, qr } = update
 
@@ -98,7 +91,7 @@ async function iniciarBot() {
         })
 
         // ==============================
-        // MENSAJES - VERSIÓN CORREGIDA
+        // MENSAJES - CON FILTRO FLEXIBLE
         // ==============================
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
             try {
@@ -107,27 +100,26 @@ async function iniciarBot() {
                 const msg = messages[0]
                 if (!msg.message || msg.key.fromMe) return
                 
-                // 🔥 CORRECCIÓN CRÍTICA: usar participant O remoteJid
                 const from = msg.key.participant || msg.key.remoteJid
                 
                 if (from.includes('@g.us')) return
                 
                 const numero = from.split('@')[0]
                 
-                // Log para debug
                 console.log('\n📨 Mensaje recibido:')
                 console.log('   JID:', from)
                 console.log('   Número:', numero)
                 
-                // Validar número chileno (569 + 9 dígitos = 12 caracteres)
-                if (!numero.startsWith('569') || numero.length !== 12) {
-                    console.log(`   ⏭️ Ignorando (no es número chileno válido)\n`)
+                // 🔥 FILTRO FLEXIBLE (acepta 9, 12 o 13 dígitos)
+                const esNumeroValido = numero.length >= 9 && numero.length <= 13
+                
+                if (!esNumeroValido) {
+                    console.log(`   ⏭️ Ignorando (largo inválido: ${numero.length} dígitos)\n`)
                     return
                 }
                 
-                console.log('   ✅ Número chileno válido')
+                console.log('   ✅ Número aceptado (largo:', numero.length, 'dígitos)')
                 
-                // Extraer texto
                 const text = msg.message?.conversation || 
                             msg.message?.extendedTextMessage?.text || 
                             ''
@@ -142,14 +134,14 @@ async function iniciarBot() {
                 const mensaje = text.toLowerCase().trim()
                 let respuesta = ''
                 
-                // ===== RESPUESTAS INTELIGENTES =====
+                // ===== RESPUESTAS =====
                 if (mensaje === 'ahumada') {
                     sesiones[from] = { sucursal: 'ahumada' }
-                    respuesta = `✅ Has seleccionado la sucursal *Ahumada*.\n\nAhora puedes escribir:\n4️⃣ Datos de abono\n1️⃣ Reservar hora`
+                    respuesta = `✅ Sucursal Ahumada seleccionada\n\n4️⃣ Datos abono\n1️⃣ Reservar hora`
                 }
                 else if (mensaje === 'providencia') {
                     sesiones[from] = { sucursal: 'providencia' }
-                    respuesta = `✅ Has seleccionado la sucursal *Providencia*.\n\nAhora puedes escribir:\n4️⃣ Datos de abono\n1️⃣ Reservar hora`
+                    respuesta = `✅ Sucursal Providencia seleccionada\n\n4️⃣ Datos abono\n1️⃣ Reservar hora`
                 }
                 else if (mensaje === '1' || mensaje.includes('hora') || mensaje.includes('reservar')) {
                     respuesta = `📅 *Reserva de Hora*\n\n🏙️ Ahumada: https://calendly.com/pieconsalud-santiagocentro/reserva-tu-hora\n🏙️ Providencia: https://calendly.com/pieconsalud-providencia/reserva-tu-hora\n\n⚠️ Asistir sin esmalte`
@@ -158,7 +150,7 @@ async function iniciarBot() {
                     respuesta = `💰 *Valores*\n\nAtención Podológica: *$20.000*\n\n• Uña encarnada\n• Onicomicosis\n• Pie diabético`
                 }
                 else if (mensaje === '3' || mensaje.includes('ubicacion') || mensaje.includes('direccion')) {
-                    respuesta = `📍 *Ubicación*\n\n🏙️ Ahumada: Metro U. de Chile / Plaza de Armas\n🏙️ Providencia: Metro Tobalaba\n\nEscribe "ahumada" o "providencia" para más info`
+                    respuesta = `📍 *Ubicación*\n\n🏙️ Ahumada: Metro U. de Chile / Plaza de Armas\n🏙️ Providencia: Metro Tobalaba`
                 }
                 else if (mensaje === '4' || mensaje.includes('abono') || mensaje.includes('transferencia')) {
                     if (!sesiones[from]?.sucursal) {
@@ -197,7 +189,7 @@ async function iniciarBot() {
 
         sock.ev.on('creds.update', saveCreds)
         
-        console.log('🎧 Bot listo - Esperando mensajes...\n')
+        console.log('🎧 Bot listo - Filtro flexible (9-13 dígitos)\n')
 
     } catch (error) {
         console.error('💥 Error:', error)
