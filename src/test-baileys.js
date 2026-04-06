@@ -56,12 +56,12 @@ async function procesarCola() {
     procesandoCola = true
     
     while (colaMensajes.length > 0) {
-        const { from, respuesta, sock } = colaMensajes.shift()
+        const { from, respuesta, sock, intentos = 0 } = colaMensajes.shift()
         
         try {
             if (!sock || !sock.user) {
                 console.log('⚠️ Socket no disponible, reintentando después...')
-                colaMensajes.unshift({ from, respuesta, sock })
+                colaMensajes.unshift({ from, respuesta, sock, intentos })
                 await new Promise(resolve => setTimeout(resolve, 5000))
                 continue
             }
@@ -77,7 +77,13 @@ async function procesarCola() {
             await new Promise(resolve => setTimeout(resolve, 3000))
             
         } catch (error) {
-            console.error('❌ Error en cola:', error)
+            console.error('❌ Error en cola para', from, ':', error.message)
+            if (intentos < 3) {
+                console.log(`🔄 Reintentando (${intentos + 1}/3) para:`, from)
+                colaMensajes.push({ from, respuesta, sock, intentos: intentos + 1 })
+            } else {
+                console.log('❌ Mensaje descartado después de 3 intentos:', from)
+            }
         }
     }
     
@@ -142,7 +148,7 @@ app.get('/', (req, res) => {
             <body>
                 <div class="container">
                     <div class="card">
-                        <h1>🤖 Bot Pie Consalud - VERSIÓN DEFINITIVA</h1>
+                        <h1>🤖 Bot Pie Consalud - VERSIÓN PRO</h1>
                         <p>Estado: <span class="${botConectado ? 'online' : 'offline'}">${botConectado ? '✅ CONECTADO' : '❌ DESCONECTADO'}</span></p>
                         <p>📊 Sesiones activas: ${Object.keys(sesiones).length}</p>
                         <p>👥 Clientes únicos: ${clientesDB.size}</p>
@@ -209,7 +215,7 @@ app.get('/qr', (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log('🌐 Servidor web activo en puerto', PORT)
-    console.log('🤖 VERSIÓN DEFINITIVA - Con corrección de IDs')
+    console.log('🤖 VERSIÓN PRO - Sin versión forzada + Filtro de IDs')
     iniciarBaileys()
 })
 
@@ -218,11 +224,12 @@ app.listen(PORT, '0.0.0.0', () => {
 // ==============================
 
 async function iniciarBaileys() {
-    console.log('🚀 Bot Versión Definitiva...\n')
+    console.log('🚀 Bot Versión Pro...\n')
 
     try {
         const { state, saveCreds } = await useMultiFileAuthState('./auth_info')
 
+        // 🔥 VERSIÓN CORRECTA - SIN forzar version incorrecta
         const sock = makeWASocket({
             auth: state,
             logger: Pino({ level: 'silent' }),
@@ -235,9 +242,8 @@ async function iniciarBaileys() {
             markOnlineOnConnect: true,
             connectTimeoutMs: 60000,
             retryRequestDelayMs: 5000,
-            maxRetries: 5,
-            // IMPORTANTE: Forzar modo no-multi-device
-            version: [2, 2413, 1]
+            maxRetries: 5
+            // ❌ ELIMINADO: version: [2, 2413, 1]
         })
         
         sockInstance = sock
@@ -258,7 +264,7 @@ async function iniciarBaileys() {
             }
 
             if (connection === 'open') {
-                console.log('✅ WhatsApp conectado - VERSIÓN DEFINITIVA')
+                console.log('✅ WhatsApp conectado - VERSIÓN PRO')
                 console.log('👤 Usuario:', sock.user?.id)
                 botConectado = true
                 ultimoQR = null
@@ -283,7 +289,7 @@ async function iniciarBaileys() {
         })
 
         // ==============================
-        // MENSAJES - VERSIÓN CORREGIDA
+        // MENSAJES - CON FILTRO DE IDS
         // ==============================
 
         sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -293,36 +299,36 @@ async function iniciarBaileys() {
 
                 const msg = messages[0]
                 
-                // Ignorar mensajes propios
                 if (!msg.message || msg.key.fromMe) return
                 if (msg.key.remoteJid === 'status@broadcast') return
 
-                // ===== CORRECCIÓN DEFINITIVA DEL ID =====
-                // En WhatsApp, el remoteJid YA ES el número en chats 1-a-1
-                // El participant SOLO se usa en grupos
                 let from = msg.key.remoteJid
                 
-                // Log para debug
                 console.log('\n📨 Mensaje recibido:')
                 console.log('   remoteJid:', msg.key.remoteJid)
                 console.log('   participant:', msg.key.participant)
-                console.log('   fromMe:', msg.key.fromMe)
                 
-                // Si es grupo, ignoramos (el bot solo responde DMs)
                 if (from.includes('@g.us')) {
-                    console.log('   ⏭️ Ignorando mensaje de grupo')
+                    console.log('   ⏭️ Ignorando grupo')
                     return
                 }
                 
-                // Verificar que sea un número válido (termina en @s.whatsapp.net)
                 if (!from.endsWith('@s.whatsapp.net')) {
                     console.log('   ⏭️ Ignorando ID no estándar:', from)
                     return
                 }
                 
-                console.log('   ✅ From final:', from)
+                // 🔥 FILTRO DE ID VÁLIDO
+                const numero = from.split('@')[0]
+                
+                // Los IDs válidos tienen entre 11 y 15 dígitos
+                if (numero.length < 11 || numero.length > 15) {
+                    console.log(`   ⏭️ ID inválido (${numero.length} dígitos):`, from)
+                    return
+                }
+                
+                console.log('   ✅ ID válido (longitud:', numero.length, ')')
 
-                // Extraer texto
                 const text =
                     msg.message?.conversation ||
                     msg.message?.extendedTextMessage?.text ||
@@ -381,16 +387,15 @@ async function iniciarBaileys() {
                     respuesta = `👣 *¡Hola! Bienvenido/a a Pie Consalud* 👣\n\nPor favor selecciona una opción:\n\n1️⃣ Reservar una hora\n2️⃣ Ver precios\n3️⃣ Ubicación\n4️⃣ Datos para abono\n5️⃣ Horarios\n6️⃣ Medios de pago`
                 }
 
-                // ===== ENVÍO =====
                 if (respuesta) {
                     console.log('   📤 Respondiendo a:', from)
                     
-                    // Guardar cliente
                     if (!clientesDB.has(from)) {
                         clientesDB.set(from, {
                             primerContacto: Date.now(),
                             ultimoContacto: Date.now(),
-                            totalMensajes: 1
+                            totalMensajes: 1,
+                            numero: numero
                         })
                     } else {
                         const c = clientesDB.get(from)
@@ -398,13 +403,10 @@ async function iniciarBaileys() {
                         c.totalMensajes++
                     }
                     
-                    // Enviar
-                    await sock.sendPresenceUpdate('composing', from)
-                    await new Promise(resolve => setTimeout(resolve, 2000))
-                    await sock.sendPresenceUpdate('paused', from)
-                    await sock.sendMessage(from, { text: respuesta })
+                    colaMensajes.push({ from, respuesta, sock })
+                    procesarCola()
                     
-                    console.log('   ✅ Respuesta enviada a:', from)
+                    console.log('   ✅ Mensaje encolado para:', from)
                     console.log('')
                 }
 
@@ -415,7 +417,7 @@ async function iniciarBaileys() {
 
         sock.ev.on('creds.update', saveCreds)
         
-        console.log('🎧 Bot listo - Solo responde a números reales')
+        console.log('🎧 Bot listo - Con filtro de IDs válidos')
 
     } catch (error) {
         console.error('💥 Error:', error)
